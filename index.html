@@ -10,86 +10,159 @@
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icon-192.png">
     <title>📱 Woretaw Scanner</title>
-    <!-- Self-contained PWA — works offline -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
+        :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--blue:#3b82f6;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--text:#fff;--muted:#94a3b8;--dim:#475569;--font:'Segoe UI',Tahoma,sans-serif}
         *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-        body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#fff;min-height:100vh;min-height:100dvh;direction:rtl}
+        body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;min-height:100dvh;direction:rtl;font-size:var(--fs,14px);transition:background .3s,color .3s}
+        body.light{--bg:#f1f5f9;--card:#fff;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;--dim:#94a3b8}
 
-        .header{background:linear-gradient(135deg,#1e293b,#334155);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100}
-        .header h1{font-size:1.1em}
+        /* Splash */
+        .splash{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .5s}
+        .splash.hide{opacity:0;pointer-events:none}
+        .splash .logo{font-size:64px;animation:bounce 1s ease infinite}
+        .splash .title{font-size:18px;font-weight:700;margin-top:12px;color:var(--blue)}
+        .splash .sub{font-size:11px;color:var(--muted);margin-top:6px}
+        @keyframes bounce{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+
+        .header{background:linear-gradient(135deg,#1e293b,#334155);padding:10px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100}
+        .header h1{font-size:1em}
         .conn{display:flex;align-items:center;gap:6px;font-size:10px}
-        .dot{width:8px;height:8px;border-radius:50%}
-        .dot.on{background:#22c55e;box-shadow:0 0 6px #22c55e}
-        .dot.off{background:#ef4444}
-        .dot.wait{background:#f59e0b;animation:p 1s infinite}
+        .dot{width:8px;height:8px;border-radius:50%;transition:.3s}
+        .dot.on{background:var(--green);box-shadow:0 0 6px var(--green)}
+        .dot.off{background:var(--red)}
+        .dot.wait{background:var(--yellow);animation:p 1s infinite}
         @keyframes p{0%,100%{opacity:1}50%{opacity:.3}}
 
+        /* Tabs */
+        .tabs{display:flex;background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:42px;z-index:99}
+        .tab{flex:1;padding:10px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent;transition:.2s;position:relative}
+        .tab.on{color:var(--blue);border-bottom-color:var(--blue);background:rgba(59,130,246,.08)}
+        .tab .badge{background:var(--red);color:#fff;border-radius:10px;padding:1px 5px;font-size:8px;position:absolute;top:4px;left:50%;margin-left:10px}
+
+        .content{padding:12px;display:none;min-height:calc(100vh - 92px)}
+        .content.on{display:block}
+
+        /* Setup */
         .setup{padding:20px;max-width:420px;margin:0 auto}
-        .setup h2{text-align:center;margin-bottom:16px}
-        .setup p{text-align:center;color:#94a3b8;font-size:12px;margin-bottom:20px}
+        .setup h2{text-align:center;margin-bottom:8px}
+        .setup p{text-align:center;color:var(--muted);font-size:12px;margin-bottom:20px}
         .fld{margin-bottom:14px}
-        .fld label{display:block;font-size:12px;color:#94a3b8;margin-bottom:4px}
-        .fld input,.fld select{width:100%;padding:12px;background:#1e293b;border:2px solid #334155;border-radius:10px;color:#fff;font-size:14px}
-        .fld input:focus{border-color:#3b82f6;outline:none}
-        .fld .hint{font-size:10px;color:#475569;margin-top:4px}
-        .btn{width:100%;padding:14px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px}
+        .fld label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+        .fld input,.fld select{width:100%;padding:12px;background:var(--card);border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:14px}
+        .fld input:focus{border-color:var(--blue);outline:none}
+        .fld .hint{font-size:10px;color:var(--dim);margin-top:4px}
+        .btn{width:100%;padding:14px;background:linear-gradient(135deg,var(--blue),#2563eb);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px}
         .btn:active{transform:scale(.98)}
-        .btn-off{background:#334155;color:#94a3b8;font-size:12px}
+        .btn.off{background:var(--border);color:var(--muted);font-size:12px}
 
         .app{display:none}.app.on{display:block}
 
-        #cam{width:100%;max-width:420px;margin:0 auto;border-radius:12px;overflow:hidden;background:#000;min-height:200px}
+        /* Scanner */
+        #cam{width:100%;max-width:420px;margin:0 auto;border-radius:12px;overflow:hidden;background:#000;min-height:200px;position:relative}
+        .laser{position:absolute;top:50%;left:10%;right:10%;height:2px;background:linear-gradient(90deg,transparent,var(--red),transparent);z-index:5;animation:laser 2s ease-in-out infinite;pointer-events:none;display:none}
+        .laser.on{display:block}
+        @keyframes laser{0%,100%{transform:translateY(-40px)}50%{transform:translateY(40px)}}
+
         .ctrls{display:flex;gap:8px;padding:12px}
-        .ctrls button{flex:1;padding:14px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer}
+        .ctrls button{flex:1;padding:14px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:.1s}
         .ctrls button:active{transform:scale(.97)}
-        .c-scan{background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff}
-        .c-scan.on{background:linear-gradient(135deg,#ef4444,#dc2626)}
-        .c-flash{background:#334155;color:#fff;flex:0 0 50px!important}
+        .c-scan{background:linear-gradient(135deg,var(--blue),#2563eb);color:#fff}
+        .c-scan.on{background:linear-gradient(135deg,var(--red),#dc2626)}
+        .c-flash{background:var(--border);color:#fff;flex:0 0 50px!important}
+        .c-flash.on{background:var(--yellow);color:#000}
+        .c-gallery{background:var(--border);color:#fff;flex:0 0 50px!important}
 
         .inp{display:flex;gap:8px;padding:0 12px 12px}
-        .inp input{flex:1;padding:12px;border:2px solid #334155;border-radius:10px;background:#1e293b;color:#fff;font-size:16px;font-family:monospace;letter-spacing:1px}
-        .inp input:focus{border-color:#3b82f6;outline:none}
-        .inp button{padding:12px 18px;background:#3b82f6;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:16px}
+        .inp input{flex:1;padding:12px;border:2px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-size:16px;font-family:monospace;letter-spacing:1px}
+        .inp input:focus{border-color:var(--blue);outline:none}
+        .inp button{padding:12px 18px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-weight:700;font-size:16px}
 
-        .card{margin:0 12px 12px;background:linear-gradient(135deg,#1e3a5f,#1e293b);border-radius:12px;padding:16px;border:1px solid rgba(59,130,246,.3);animation:su .3s ease}
+        /* Batch mode */
+        .batch-bar{background:var(--yellow);color:#000;text-align:center;padding:6px;font-size:11px;font-weight:600;display:none}
+        .batch-bar.on{display:flex;justify-content:space-between;align-items:center;padding:6px 12px}
+        .batch-bar button{background:#000;color:var(--yellow);border:none;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer}
+
+        /* Item card */
+        .card{margin:0 12px 12px;background:linear-gradient(135deg,#1e3a5f,var(--card));border-radius:12px;padding:16px;border:1px solid rgba(59,130,246,.3);animation:su .3s ease}
         @keyframes su{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-        .card .num{font-size:18px;font-weight:800;color:#3b82f6;font-family:monospace}
+        .card .num{font-size:18px;font-weight:800;color:var(--blue);font-family:monospace;display:flex;justify-content:space-between;align-items:center}
+        .card .num .actions{display:flex;gap:4px}
+        .card .num .actions button{background:rgba(255,255,255,.1);border:none;color:#fff;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:12px}
         .card .desc{font-size:13px;color:#cbd5e1;margin:6px 0}
         .card .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
         .card .box{background:rgba(0,0,0,.2);border-radius:8px;padding:8px}
-        .card .box .l{font-size:10px;color:#64748b}
+        .card .box .l{font-size:10px;color:var(--dim)}
         .card .box .v{font-size:14px;font-weight:700;margin-top:2px}
         .card .qb{text-align:center;padding:12px;grid-column:span 2}
         .card .qb .v{font-size:32px}
-        .grn{color:#22c55e}.ylw{color:#f59e0b}.red{color:#ef4444}
+        .grn{color:var(--green)}.ylw{color:var(--yellow)}.red{color:var(--red)}
 
+        /* History */
         .hist{padding:0 12px}
         .hist-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-        .hist-h h3{font-size:12px;color:#64748b}
-        .hist-h button{background:none;border:none;color:#ef4444;font-size:11px;cursor:pointer}
+        .hist-h h3{font-size:12px;color:var(--dim)}
+        .hist-h .hbtns{display:flex;gap:6px}
+        .hist-h button{background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer}
+        .search-bar{margin-bottom:8px}
+        .search-bar input{width:100%;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px}
+        .date-group{font-size:10px;color:var(--dim);padding:6px 0 2px;font-weight:600}
         .slist{max-height:280px;overflow-y:auto}
-        .srow{background:#1e293b;border-radius:8px;padding:10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;border:1px solid #334155}
-        .srow:active{background:#334155}
-        .srow .code{font-family:monospace;font-size:14px;font-weight:700;color:#3b82f6}
-        .srow .dsc{font-size:11px;color:#94a3b8;margin-top:2px}
-        .srow .tm{font-size:10px;color:#475569}
+        .srow{background:var(--card);border-radius:8px;padding:10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);cursor:pointer}
+        .srow:active{background:var(--border)}
+        .srow .code{font-family:monospace;font-size:14px;font-weight:700;color:var(--blue)}
+        .srow .dsc{font-size:11px;color:var(--muted);margin-top:2px}
+        .srow .meta{text-align:left}
+        .srow .tm{font-size:10px;color:var(--dim)}
         .srow .ss{font-size:9px}
-        .synced{color:#22c55e}.pending{color:#f59e0b}
+        .synced{color:var(--green)}.pending{color:var(--yellow)}
+        .srow .fav{color:var(--yellow);font-size:12px;cursor:pointer}
+        .srow .fav.off{color:var(--dim)}
 
-        .pbar{background:#f59e0b;color:#0f172a;text-align:center;padding:6px;font-size:11px;font-weight:600;display:none}
+        /* Favorites tab */
+        .fav-list{max-height:70vh;overflow-y:auto}
+        .fav-item{background:var(--card);border-radius:8px;padding:12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border)}
+        .fav-item .code{font-family:monospace;font-size:16px;font-weight:700;color:var(--blue)}
+        .fav-item .note{font-size:11px;color:var(--muted)}
+        .fav-item button{background:none;border:none;color:var(--red);cursor:pointer}
+
+        /* Settings */
+        .sgrp{background:var(--card);border-radius:12px;padding:14px;margin-bottom:10px}
+        .sgrp h3{font-size:11px;color:var(--dim);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px}
+        .srow2{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+        .srow2:last-child{border:none}
+        .srow2 label{font-size:13px}
+        .srow2 select,.srow2 input[type="text"]{padding:8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font-size:13px}
+        .tgl{width:48px;height:26px;background:var(--border);border-radius:13px;position:relative;cursor:pointer;transition:.3s}
+        .tgl.on{background:var(--blue)}
+        .tgl::after{content:'';width:22px;height:22px;background:#fff;border-radius:50%;position:absolute;top:2px;right:2px;transition:.3s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+        .tgl.on::after{right:24px}
+
+        .pbar{background:var(--yellow);color:#000;text-align:center;padding:6px;font-size:11px;font-weight:600;display:none}
         .pbar.show{display:block}
 
-        .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#334155;color:#fff;padding:10px 20px;border-radius:20px;font-size:12px;font-weight:600;box-shadow:0 4px 15px rgba(0,0,0,.3);z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+        .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--border);color:#fff;padding:10px 20px;border-radius:20px;font-size:12px;font-weight:600;box-shadow:0 4px 15px rgba(0,0,0,.3);z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90%}
         .toast.show{opacity:1}.toast.ok{background:#16a34a}.toast.err{background:#dc2626}
 
-        .gear{position:fixed;bottom:16px;left:16px;width:40px;height:40px;background:#334155;border:none;color:#fff;border-radius:50%;font-size:18px;cursor:pointer;z-index:50}
+        .gear{position:fixed;bottom:16px;left:16px;width:40px;height:40px;background:var(--border);border:none;color:#fff;border-radius:50%;font-size:18px;cursor:pointer;z-index:50}
+
+        .info{text-align:center;font-size:10px;color:var(--dim);padding:20px}
+
+        /* Gallery input (hidden) */
+        #galleryInput{display:none}
     </style>
 </head>
 <body>
 
+<!-- SPLASH -->
+<div class="splash" id="splash">
+    <div class="logo">📱</div>
+    <div class="title">Woretaw Scanner</div>
+    <div class="sub">v3.0 — סורק ברקוד למחסן</div>
+</div>
+
 <!-- SETUP -->
-<div id="setup" class="setup">
+<div id="setup" class="setup" style="display:none">
     <h2>📱 Woretaw Scanner</h2>
     <p>סורק ברקוד עצמאי — עובד מכל מקום</p>
     <div class="fld">
@@ -99,10 +172,10 @@
     </div>
     <div class="fld">
         <label>שם מכשיר</label>
-        <input type="text" id="sDev" placeholder="מסופון של יורם" value="">
+        <input type="text" id="sDev" placeholder="מסופון של יורם">
     </div>
     <button class="btn" onclick="go()">🚀 התחל</button>
-    <button class="btn btn-off" onclick="go(true)">📴 עבודה Offline</button>
+    <button class="btn off" onclick="go(true)">📴 Offline</button>
 </div>
 
 <!-- APP -->
@@ -113,39 +186,115 @@
     </div>
     <div class="pbar" id="pbar">📡 <span id="pc">0</span> ממתינות לסנכרון</div>
 
-    <div id="cam"></div>
-    <div class="ctrls">
-        <button class="c-scan" id="bScan" onclick="tScan()">📷 סרוק</button>
-        <button class="c-flash" onclick="tFlash()">🔦</button>
-    </div>
-    <div class="inp">
-        <input type="text" id="bi" placeholder="הקלד מק״ט..." inputmode="text" autocomplete="off" onkeydown="if(event.key==='Enter'){scan(this.value);this.value=''}">
-        <button onclick="scan(document.getElementById('bi').value);document.getElementById('bi').value=''">🔍</button>
+    <div class="tabs">
+        <div class="tab on" onclick="stab('scan')">📷</div>
+        <div class="tab" onclick="stab('hist')">📋</div>
+        <div class="tab" onclick="stab('fav')">⭐</div>
+        <div class="tab" onclick="stab('set')">⚙️</div>
     </div>
 
-    <div id="rc"></div>
-
-    <div class="hist">
-        <div class="hist-h"><h3 id="ht">📋 (0)</h3><button onclick="clr()">🗑️ נקה</button></div>
-        <div class="slist" id="sl"></div>
+    <!-- SCAN TAB -->
+    <div class="content on" id="tScan">
+        <div id="cam"><div class="laser" id="laser"></div></div>
+        <div class="ctrls">
+            <button class="c-scan" id="bScan" onclick="tScan()">📷 סרוק</button>
+            <button class="c-flash" id="bFlash" onclick="tFlash()">🔦</button>
+            <button class="c-gallery" onclick="document.getElementById('galleryInput').click()">🖼️</button>
+        </div>
+        <input type="file" id="galleryInput" accept="image/*" onchange="scanFromImage(this)">
+        <div class="batch-bar" id="batchBar">
+            <span>📦 מצב אצווה: <b id="batchCount">0</b> פריטים</span>
+            <div><button onclick="sendBatch()">📤 שלח</button> <button onclick="clearBatch()">✕</button></div>
+        </div>
+        <div class="inp">
+            <input type="text" id="bi" placeholder="הקלד מק״ט..." inputmode="text" autocomplete="off" onkeydown="if(event.key==='Enter'){scan(this.value);this.value=''}">
+            <button onclick="scan(document.getElementById('bi').value);document.getElementById('bi').value=''">🔍</button>
+        </div>
+        <div id="rc"></div>
     </div>
 
-    <button class="gear" onclick="document.getElementById('setup').style.display='block';document.getElementById('app').classList.remove('on')">⚙️</button>
+    <!-- HISTORY TAB -->
+    <div class="content" id="tHist">
+        <div class="hist">
+            <div class="hist-h">
+                <h3 id="ht">📋 (0)</h3>
+                <div class="hbtns">
+                    <button onclick="shareHistory()">📤 שתף</button>
+                    <button onclick="clr()" style="color:var(--red)">🗑️ נקה</button>
+                </div>
+            </div>
+            <div class="search-bar"><input type="text" id="histSearch" placeholder="🔍 חפש בהיסטוריה..." oninput="ren()"></div>
+            <div class="slist" id="sl"></div>
+        </div>
+    </div>
+
+    <!-- FAVORITES TAB -->
+    <div class="content" id="tFav">
+        <h3 style="font-size:13px;color:var(--muted);margin-bottom:12px">⭐ מועדפים</h3>
+        <div class="fav-list" id="favList"></div>
+        <div class="info" id="favEmpty">לחץ ⭐ ליד סריקה כדי להוסיף למועדפים</div>
+    </div>
+
+    <!-- SETTINGS TAB -->
+    <div class="content" id="tSet">
+        <div class="sgrp">
+            <h3>📷 סריקה</h3>
+            <div class="srow2"><label>רטט</label><div class="tgl on" id="tVib" onclick="this.classList.toggle('on');sset()"></div></div>
+            <div class="srow2"><label>צליל</label><div class="tgl on" id="tSnd" onclick="this.classList.toggle('on');sset()"></div></div>
+            <div class="srow2"><label>סריקה רציפה</label><div class="tgl" id="tCont" onclick="this.classList.toggle('on');sset()"></div></div>
+            <div class="srow2"><label>מצב אצווה</label><div class="tgl" id="tBatch" onclick="this.classList.toggle('on');sset();upBatch()"></div></div>
+            <div class="srow2"><label>קו לייזר</label><div class="tgl on" id="tLaser" onclick="this.classList.toggle('on');sset()"></div></div>
+        </div>
+        <div class="sgrp">
+            <h3>🎨 תצוגה</h3>
+            <div class="srow2"><label>מצב בהיר</label><div class="tgl" id="tLight" onclick="this.classList.toggle('on');document.body.classList.toggle('light');sset()"></div></div>
+            <div class="srow2">
+                <label>גודל טקסט</label>
+                <select id="sFontSize" onchange="document.documentElement.style.setProperty('--fs',this.value);sset()">
+                    <option value="12px">קטן</option>
+                    <option value="14px" selected>רגיל</option>
+                    <option value="16px">גדול</option>
+                    <option value="18px">גדול מאוד</option>
+                </select>
+            </div>
+        </div>
+        <div class="sgrp">
+            <h3>🔗 חיבור</h3>
+            <div class="srow2"><label>שרת</label><span id="sConn" style="font-size:12px">—</span></div>
+            <div class="srow2"><label></label><button class="btn" style="width:auto;padding:8px 16px;font-size:12px" onclick="document.getElementById('app').classList.remove('on');document.getElementById('setup').style.display='block'">⚙️ שנה הגדרות</button></div>
+        </div>
+        <div class="info">📱 Woretaw Scanner v3.0<br>© Woretaw Project</div>
+    </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
+// ===== STATE =====
 let C=JSON.parse(localStorage.getItem('wsc')||'{}');
 let S=JSON.parse(localStorage.getItem('wss')||'[]');
+let F=JSON.parse(localStorage.getItem('wsf')||'[]'); // favorites
+let batch=[];
 let sc=null,scanning=false,flash=false;
 const AC=new(window.AudioContext||window.webkitAudioContext)();
-function beep(){const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);o.frequency.value=1200;g.gain.value=.3;o.start();o.stop(AC.currentTime+.1)}
 
-// Toast
+function beepOk(){const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);o.frequency.value=1200;o.type='sine';g.gain.value=.3;o.start();o.stop(AC.currentTime+.08)}
+function beepErr(){const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);o.frequency.value=400;o.type='square';g.gain.value=.2;o.start();o.stop(AC.currentTime+.2)}
+function vib(ms){if(navigator.vibrate&&gTgl('tVib'))navigator.vibrate(ms)}
+function gTgl(id){return document.getElementById(id)?.classList.contains('on')}
+
+// ===== SPLASH =====
+setTimeout(()=>{
+    document.getElementById('splash').classList.add('hide');
+    setTimeout(()=>document.getElementById('splash').style.display='none',500);
+    if(C.url||C.off){document.getElementById('app').classList.add('on')}
+    else{document.getElementById('setup').style.display='block'}
+},1200);
+
+// ===== TOAST =====
 let tt;function toast(t,c){const e=document.getElementById('toast');e.textContent=t;e.className='toast show '+(c||'');clearTimeout(tt);tt=setTimeout(()=>e.className='toast',2500)}
 
-// Setup
+// ===== SETUP =====
 function go(off){
     C.url=(document.getElementById('sUrl').value||'').trim().replace(/\/+$/,'');
     C.dev=document.getElementById('sDev').value.trim()||'מסופון';
@@ -156,34 +305,77 @@ function go(off){
     chk();
 }
 
-// Connection
+// ===== CONNECTION =====
 async function chk(){
     const d=document.getElementById('dot'),t=document.getElementById('ct');
+    document.getElementById('sConn').textContent=C.url||'Offline';
     if(!C.url||C.off){d.className='dot off';t.textContent='Offline';return false}
     try{d.className='dot wait';t.textContent='...';
         const r=await fetch(C.url+'/scanner-pending',{signal:AbortSignal.timeout(5000)});
-        if(r.ok){d.className='dot on';t.textContent='☁️ מחובר ✓';syncP();return true}
+        if(r.ok){d.className='dot on';t.textContent='☁️ ✓';syncP();return true}
     }catch(e){}
-    d.className='dot off';t.textContent='לא מחובר';return false
+    d.className='dot off';t.textContent='✗';return false
 }
 setInterval(chk,30000);
 
-// Scanner
+// ===== TABS =====
+function stab(t){
+    document.querySelectorAll('.content').forEach(c=>c.classList.remove('on'));
+    document.querySelectorAll('.tab').forEach(c=>c.classList.remove('on'));
+    const map={scan:'tScan',hist:'tHist',fav:'tFav',set:'tSet'};
+    const idx=['scan','hist','fav','set'].indexOf(t);
+    document.getElementById(map[t]).classList.add('on');
+    document.querySelectorAll('.tab')[idx].classList.add('on');
+    if(t==='hist')ren();if(t==='fav')renFav();
+}
+
+// ===== SCANNER =====
 function tScan(){scanning?stopS():startS()}
 function startS(){
     if(AC.state==='suspended')AC.resume();
-    const cfg={fps:10,qrbox:{width:250,height:120},formatsToSupport:[0,2,4,3,7,6,12]};
+    const cfg={fps:10,qrbox:{width:250,height:120},formatsToSupport:[0,2,3,4,6,7,12]};
     sc=new Html5Qrcode('cam');
-    sc.start({facingMode:'environment'},cfg,onS,()=>{}).then(()=>{scanning=true;document.getElementById('bScan').textContent='⏹️ עצור';document.getElementById('bScan').classList.add('on')}).catch(e=>toast('❌ '+e,'err'))
+    sc.start({facingMode:'environment'},cfg,onS,()=>{}).then(()=>{
+        scanning=true;
+        document.getElementById('bScan').textContent='⏹️ עצור';
+        document.getElementById('bScan').classList.add('on');
+        if(gTgl('tLaser'))document.getElementById('laser').classList.add('on');
+    }).catch(e=>toast('❌ '+e,'err'))
 }
-function stopS(){if(!sc)return;sc.stop().then(()=>{scanning=false;document.getElementById('bScan').textContent='📷 סרוק';document.getElementById('bScan').classList.remove('on')}).catch(()=>{})}
-let lc='',lt=0;
-function onS(c){if(c===lc&&Date.now()-lt<2500)return;lc=c;lt=Date.now();if(navigator.vibrate)navigator.vibrate(80);beep();scan(c)}
-function tFlash(){if(!sc||!scanning)return;flash=!flash;sc.applyVideoConstraints({advanced:[{torch:flash}]}).catch(()=>{})}
+function stopS(){if(!sc)return;sc.stop().then(()=>{
+    scanning=false;
+    document.getElementById('bScan').textContent='📷 סרוק';
+    document.getElementById('bScan').classList.remove('on');
+    document.getElementById('laser').classList.remove('on');
+}).catch(()=>{})}
 
-// Scan
+let lc='',lt=0;
+function onS(c){if(c===lc&&Date.now()-lt<2500)return;lc=c;lt=Date.now();
+    if(gTgl('tSnd'))beepOk();vib([80]);scan(c);
+    if(!gTgl('tCont'))stopS()}
+
+function tFlash(){if(!sc||!scanning)return;flash=!flash;
+    document.getElementById('bFlash').classList.toggle('on',flash);
+    sc.applyVideoConstraints({advanced:[{torch:flash}]}).catch(()=>{})}
+
+// Scan from gallery
+function scanFromImage(input){
+    if(!input.files||!input.files[0])return;
+    const file=input.files[0];
+    const html5QrCode=new Html5Qrcode('cam');
+    html5QrCode.scanFile(file,true).then(code=>{
+        toast('✅ '+code,'ok');if(gTgl('tSnd'))beepOk();vib([80]);scan(code);
+    }).catch(()=>toast('❌ לא זוהה ברקוד','err'));
+    input.value='';
+}
+
+// ===== SCAN LOGIC =====
 async function scan(c){
-    if(!c||!c.trim())return;c=c.trim();toast('✅ '+c,'ok');
+    if(!c||!c.trim())return;c=c.trim();
+    // Batch mode
+    if(gTgl('tBatch')){batch.push(c);upBatch();toast(`📦 ${c} נוסף (${batch.length})`,'ok');return}
+
+    toast('✅ '+c,'ok');
     const e={id:Date.now().toString(),code:c,time:new Date().toLocaleTimeString('he-IL'),date:new Date().toLocaleDateString('he-IL'),ts:new Date().toISOString(),dev:C.dev||'מסופון',ok:false,res:null};
     S.unshift(e);if(S.length>500)S.pop();sav();ren();
     if(C.url&&!C.off){
@@ -196,45 +388,112 @@ async function scan(c){
 function showCard(i){
     if(!i){document.getElementById('rc').innerHTML='';return}
     const q=i.qty??'?',n=parseFloat(q),sc=isNaN(n)?'':n>10?'grn':n>0?'ylw':'red';
-    document.getElementById('rc').innerHTML=`<div class="card"><div class="num">${i.item||'—'}</div><div class="desc">${i.description||'—'}</div><div class="grid"><div class="box qb"><div class="l">מלאי</div><div class="v ${sc}">${q}</div></div><div class="box"><div class="l">מחסן</div><div class="v">${i.warehouse||'—'}</div></div><div class="box"><div class="l">LOT</div><div class="v">${i.lot||'—'}</div></div></div></div>`
+    document.getElementById('rc').innerHTML=`<div class="card">
+        <div class="num"><span>${i.item||'—'}</span><div class="actions">
+            <button onclick="shareScan('${i.item||''}','${i.description||''}')">📤</button>
+            <button onclick="navigator.clipboard?.writeText('${i.item||''}');toast('📋 הועתק!','ok')">📋</button>
+            <button onclick="toggleFav('${i.item||''}')">⭐</button>
+        </div></div>
+        <div class="desc">${i.description||'—'}</div>
+        <div class="grid">
+            <div class="box qb"><div class="l">מלאי</div><div class="v ${sc}">${q}</div></div>
+            <div class="box"><div class="l">מחסן</div><div class="v">${i.warehouse||'—'}</div></div>
+            <div class="box"><div class="l">LOT</div><div class="v">${i.lot||'—'}</div></div>
+        </div></div>`
 }
 
-// Sync
+// ===== BATCH =====
+function upBatch(){const bar=document.getElementById('batchBar');
+    bar.classList.toggle('on',gTgl('tBatch')&&batch.length>0);
+    document.getElementById('batchCount').textContent=batch.length}
+function clearBatch(){batch=[];upBatch()}
+async function sendBatch(){
+    if(!batch.length)return;
+    toast(`📤 שולח ${batch.length} פריטים...`);
+    for(const b of batch)await scan(b); // Will skip batch mode since we call directly
+    batch=[];upBatch();toast('✅ אצווה נשלחה','ok')
+}
+
+// ===== SHARE =====
+function shareScan(item,desc){
+    const text=`📦 ${item}\n${desc}`;
+    if(navigator.share){navigator.share({title:'Woretaw Scanner',text}).catch(()=>{})}
+    else{navigator.clipboard?.writeText(text);toast('📋 הועתק!')}
+}
+function shareHistory(){
+    const text=S.slice(0,20).map(s=>`${s.code} | ${s.res?.description||'—'} | ${s.time}`).join('\n');
+    if(navigator.share){navigator.share({title:'היסטוריית סריקות',text}).catch(()=>{})}
+    else{navigator.clipboard?.writeText(text);toast('📋 הועתק!')}
+}
+
+// ===== FAVORITES =====
+function toggleFav(code){
+    const idx=F.indexOf(code);
+    if(idx>=0){F.splice(idx,1);toast('⭐ הוסר מהמועדפים')}
+    else{F.push(code);toast('⭐ נוסף למועדפים!','ok')}
+    localStorage.setItem('wsf',JSON.stringify(F));ren();renFav()
+}
+function renFav(){
+    const el=document.getElementById('favList');
+    document.getElementById('favEmpty').style.display=F.length?'none':'block';
+    el.innerHTML=F.map(c=>`<div class="fav-item">
+        <div><div class="code">${c}</div></div>
+        <div><button onclick="scan('${c}')">🔍</button> <button onclick="toggleFav('${c}')">🗑️</button></div>
+    </div>`).join('')
+}
+
+// ===== SYNC =====
 async function syncP(){
     if(!C.url||C.off)return;const pend=S.filter(s=>!s.ok);if(!pend.length)return;
-    document.getElementById('dot').className='dot wait';let n=0;
-    for(const s of pend){try{const r=await fetch(C.url+'/scanner-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({barcode:s.code,device:s.dev}),signal:AbortSignal.timeout(5000)});if(r.ok){s.ok=true;n++}}catch(e){break}}
-    if(n){sav();ren();toast(`📡 ${n} סונכרנו`,'ok')}upb();chk()
+    let n=0;for(const s of pend){try{const r=await fetch(C.url+'/scanner-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({barcode:s.code,device:s.dev}),signal:AbortSignal.timeout(5000)});if(r.ok){s.ok=true;n++}}catch(e){break}}
+    if(n){sav();ren();toast(`📡 ${n} סונכרנו`,'ok')}upb()
 }
-
 function upb(){const n=S.filter(s=>!s.ok).length;document.getElementById('pc').textContent=n;document.getElementById('pbar').classList.toggle('show',n>0)}
 
-// History
+// ===== HISTORY =====
 function sav(){localStorage.setItem('wss',JSON.stringify(S))}
 function ren(){
     document.getElementById('ht').textContent=`📋 (${S.length})`;
-    const e=document.getElementById('sl');
-    if(!S.length){e.innerHTML='<div style="text-align:center;color:#475569;padding:30px;font-size:12px">סרוק ברקוד להתחלה</div>';return}
-    e.innerHTML=S.slice(0,50).map(s=>`<div class="srow" onclick="scan('${s.code}')"><div><div class="code">${s.code}</div><div class="dsc">${s.res?.description||s.res?.item||'—'}</div></div><div><div class="tm">${s.time}</div><div class="ss ${s.ok?'synced':'pending'}">${s.ok?'✓':'⏳'}</div></div></div>`).join('')
+    const el=document.getElementById('sl');
+    const q=(document.getElementById('histSearch')?.value||'').toLowerCase();
+    let filtered=S;
+    if(q)filtered=S.filter(s=>s.code.toLowerCase().includes(q)||(s.res?.description||'').toLowerCase().includes(q));
+    if(!filtered.length){el.innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">'+(q?'לא נמצאו תוצאות':'סרוק ברקוד להתחלה')+'</div>';return}
+    // Group by date
+    let html='',lastDate='';
+    filtered.slice(0,100).forEach(s=>{
+        if(s.date!==lastDate){lastDate=s.date;html+=`<div class="date-group">${s.date}</div>`}
+        const isFav=F.includes(s.code);
+        html+=`<div class="srow" onclick="scan('${s.code}')"><div><div class="code">${s.code}</div><div class="dsc">${s.res?.description||s.res?.item||'—'}</div></div><div class="meta"><div class="tm">${s.time}</div><div class="ss ${s.ok?'synced':'pending'}">${s.ok?'✓':'⏳'}</div><span class="fav ${isFav?'':'off'}" onclick="event.stopPropagation();toggleFav('${s.code}')">${isFav?'⭐':'☆'}</span></div></div>`
+    });
+    el.innerHTML=html
 }
 function clr(){S=[];sav();ren();document.getElementById('rc').innerHTML='';upb();toast('🗑️ נוקה')}
 
-// Init
-if(C.url||C.off){document.getElementById('setup').style.display='none';document.getElementById('app').classList.add('on');chk()}
-ren();upb();
+// ===== SETTINGS =====
+function sset(){localStorage.setItem('wso',JSON.stringify({vib:gTgl('tVib'),snd:gTgl('tSnd'),cont:gTgl('tCont'),batch:gTgl('tBatch'),laser:gTgl('tLaser'),light:gTgl('tLight'),fs:document.getElementById('sFontSize').value}))}
+function lset(){const o=JSON.parse(localStorage.getItem('wso')||'{}');
+    if(o.vib===false)document.getElementById('tVib').classList.remove('on');
+    if(o.snd===false)document.getElementById('tSnd').classList.remove('on');
+    if(o.cont)document.getElementById('tCont').classList.add('on');
+    if(o.batch)document.getElementById('tBatch').classList.add('on');
+    if(o.laser===false)document.getElementById('tLaser').classList.remove('on');
+    if(o.light){document.getElementById('tLight').classList.add('on');document.body.classList.add('light')}
+    if(o.fs){document.getElementById('sFontSize').value=o.fs;document.documentElement.style.setProperty('--fs',o.fs)}
+}
 
-// PWA — Service Worker + Install
-if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
+// ===== INIT =====
+lset();ren();renFav();upb();
+setTimeout(chk,1500);
 
-let deferredPrompt;
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;
-  // Show install banner
-  const b=document.createElement('div');
-  b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,#3b82f6,#2563eb);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;z-index:9999';
-  b.innerHTML='<span style="font-size:13px;font-weight:600">📱 התקן כאפליקציה</span><div><button onclick="installPWA()" style="background:#fff;color:#2563eb;border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer;margin-left:8px">התקן</button><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:rgba(255,255,255,0.7);cursor:pointer;font-size:18px">✕</button></div>';
-  document.body.appendChild(b);
-});
-function installPWA(){if(deferredPrompt){deferredPrompt.prompt();deferredPrompt.userChoice.then(()=>{deferredPrompt=null;document.querySelector('[style*="beforeinstall"]')?.remove()})}}
+// PWA
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+let dp;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;
+    const b=document.createElement('div');b.id='installBanner';
+    b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,var(--blue),#2563eb);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;z-index:9999';
+    b.innerHTML='<span style="font-size:13px;font-weight:600">📱 התקן כאפליקציה</span><div><button onclick="iPWA()" style="background:#fff;color:#2563eb;border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer;margin-left:8px">התקן</button><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:rgba(255,255,255,.7);cursor:pointer;font-size:18px">✕</button></div>';
+    document.body.appendChild(b)});
+function iPWA(){if(dp){dp.prompt();dp.userChoice.then(()=>{dp=null;document.getElementById('installBanner')?.remove()})}}
 </script>
 </body>
 </html>
