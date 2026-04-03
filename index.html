@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0f172a">
+    <title>📱 Woretaw Scanner</title>
+    <!-- Self-contained — no external dependencies except barcode scanner -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+        body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#fff;min-height:100vh;min-height:100dvh;direction:rtl}
+
+        .header{background:linear-gradient(135deg,#1e293b,#334155);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100}
+        .header h1{font-size:1.1em}
+        .conn{display:flex;align-items:center;gap:6px;font-size:10px}
+        .dot{width:8px;height:8px;border-radius:50%}
+        .dot.on{background:#22c55e;box-shadow:0 0 6px #22c55e}
+        .dot.off{background:#ef4444}
+        .dot.wait{background:#f59e0b;animation:p 1s infinite}
+        @keyframes p{0%,100%{opacity:1}50%{opacity:.3}}
+
+        .setup{padding:20px;max-width:420px;margin:0 auto}
+        .setup h2{text-align:center;margin-bottom:16px}
+        .setup p{text-align:center;color:#94a3b8;font-size:12px;margin-bottom:20px}
+        .fld{margin-bottom:14px}
+        .fld label{display:block;font-size:12px;color:#94a3b8;margin-bottom:4px}
+        .fld input,.fld select{width:100%;padding:12px;background:#1e293b;border:2px solid #334155;border-radius:10px;color:#fff;font-size:14px}
+        .fld input:focus{border-color:#3b82f6;outline:none}
+        .fld .hint{font-size:10px;color:#475569;margin-top:4px}
+        .btn{width:100%;padding:14px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px}
+        .btn:active{transform:scale(.98)}
+        .btn-off{background:#334155;color:#94a3b8;font-size:12px}
+
+        .app{display:none}.app.on{display:block}
+
+        #cam{width:100%;max-width:420px;margin:0 auto;border-radius:12px;overflow:hidden;background:#000;min-height:200px}
+        .ctrls{display:flex;gap:8px;padding:12px}
+        .ctrls button{flex:1;padding:14px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer}
+        .ctrls button:active{transform:scale(.97)}
+        .c-scan{background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff}
+        .c-scan.on{background:linear-gradient(135deg,#ef4444,#dc2626)}
+        .c-flash{background:#334155;color:#fff;flex:0 0 50px!important}
+
+        .inp{display:flex;gap:8px;padding:0 12px 12px}
+        .inp input{flex:1;padding:12px;border:2px solid #334155;border-radius:10px;background:#1e293b;color:#fff;font-size:16px;font-family:monospace;letter-spacing:1px}
+        .inp input:focus{border-color:#3b82f6;outline:none}
+        .inp button{padding:12px 18px;background:#3b82f6;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:16px}
+
+        .card{margin:0 12px 12px;background:linear-gradient(135deg,#1e3a5f,#1e293b);border-radius:12px;padding:16px;border:1px solid rgba(59,130,246,.3);animation:su .3s ease}
+        @keyframes su{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+        .card .num{font-size:18px;font-weight:800;color:#3b82f6;font-family:monospace}
+        .card .desc{font-size:13px;color:#cbd5e1;margin:6px 0}
+        .card .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+        .card .box{background:rgba(0,0,0,.2);border-radius:8px;padding:8px}
+        .card .box .l{font-size:10px;color:#64748b}
+        .card .box .v{font-size:14px;font-weight:700;margin-top:2px}
+        .card .qb{text-align:center;padding:12px;grid-column:span 2}
+        .card .qb .v{font-size:32px}
+        .grn{color:#22c55e}.ylw{color:#f59e0b}.red{color:#ef4444}
+
+        .hist{padding:0 12px}
+        .hist-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+        .hist-h h3{font-size:12px;color:#64748b}
+        .hist-h button{background:none;border:none;color:#ef4444;font-size:11px;cursor:pointer}
+        .slist{max-height:280px;overflow-y:auto}
+        .srow{background:#1e293b;border-radius:8px;padding:10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;border:1px solid #334155}
+        .srow:active{background:#334155}
+        .srow .code{font-family:monospace;font-size:14px;font-weight:700;color:#3b82f6}
+        .srow .dsc{font-size:11px;color:#94a3b8;margin-top:2px}
+        .srow .tm{font-size:10px;color:#475569}
+        .srow .ss{font-size:9px}
+        .synced{color:#22c55e}.pending{color:#f59e0b}
+
+        .pbar{background:#f59e0b;color:#0f172a;text-align:center;padding:6px;font-size:11px;font-weight:600;display:none}
+        .pbar.show{display:block}
+
+        .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#334155;color:#fff;padding:10px 20px;border-radius:20px;font-size:12px;font-weight:600;box-shadow:0 4px 15px rgba(0,0,0,.3);z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+        .toast.show{opacity:1}.toast.ok{background:#16a34a}.toast.err{background:#dc2626}
+
+        .gear{position:fixed;bottom:16px;left:16px;width:40px;height:40px;background:#334155;border:none;color:#fff;border-radius:50%;font-size:18px;cursor:pointer;z-index:50}
+    </style>
+</head>
+<body>
+
+<!-- SETUP -->
+<div id="setup" class="setup">
+    <h2>📱 Woretaw Scanner</h2>
+    <p>סורק ברקוד עצמאי — עובד מכל מקום</p>
+    <div class="fld">
+        <label>כתובת n8n Webhook</label>
+        <input type="url" id="sUrl" placeholder="https://yoram1985.app.n8n.cloud/webhook" value="https://yoram1985.app.n8n.cloud/webhook">
+        <div class="hint">סריקות נשלחות דרך n8n לשרת המחסן</div>
+    </div>
+    <div class="fld">
+        <label>שם מכשיר</label>
+        <input type="text" id="sDev" placeholder="מסופון של יורם" value="">
+    </div>
+    <button class="btn" onclick="go()">🚀 התחל</button>
+    <button class="btn btn-off" onclick="go(true)">📴 עבודה Offline</button>
+</div>
+
+<!-- APP -->
+<div id="app" class="app">
+    <div class="header">
+        <h1>📱 Woretaw Scanner</h1>
+        <div class="conn"><span class="dot" id="dot"></span><span id="ct">—</span></div>
+    </div>
+    <div class="pbar" id="pbar">📡 <span id="pc">0</span> ממתינות לסנכרון</div>
+
+    <div id="cam"></div>
+    <div class="ctrls">
+        <button class="c-scan" id="bScan" onclick="tScan()">📷 סרוק</button>
+        <button class="c-flash" onclick="tFlash()">🔦</button>
+    </div>
+    <div class="inp">
+        <input type="text" id="bi" placeholder="הקלד מק״ט..." inputmode="text" autocomplete="off" onkeydown="if(event.key==='Enter'){scan(this.value);this.value=''}">
+        <button onclick="scan(document.getElementById('bi').value);document.getElementById('bi').value=''">🔍</button>
+    </div>
+
+    <div id="rc"></div>
+
+    <div class="hist">
+        <div class="hist-h"><h3 id="ht">📋 (0)</h3><button onclick="clr()">🗑️ נקה</button></div>
+        <div class="slist" id="sl"></div>
+    </div>
+
+    <button class="gear" onclick="document.getElementById('setup').style.display='block';document.getElementById('app').classList.remove('on')">⚙️</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let C=JSON.parse(localStorage.getItem('wsc')||'{}');
+let S=JSON.parse(localStorage.getItem('wss')||'[]');
+let sc=null,scanning=false,flash=false;
+const AC=new(window.AudioContext||window.webkitAudioContext)();
+function beep(){const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);o.frequency.value=1200;g.gain.value=.3;o.start();o.stop(AC.currentTime+.1)}
+
+// Toast
+let tt;function toast(t,c){const e=document.getElementById('toast');e.textContent=t;e.className='toast show '+(c||'');clearTimeout(tt);tt=setTimeout(()=>e.className='toast',2500)}
+
+// Setup
+function go(off){
+    C.url=(document.getElementById('sUrl').value||'').trim().replace(/\/+$/,'');
+    C.dev=document.getElementById('sDev').value.trim()||'מסופון';
+    C.off=!!off;
+    localStorage.setItem('wsc',JSON.stringify(C));
+    document.getElementById('setup').style.display='none';
+    document.getElementById('app').classList.add('on');
+    chk();
+}
+
+// Connection
+async function chk(){
+    const d=document.getElementById('dot'),t=document.getElementById('ct');
+    if(!C.url||C.off){d.className='dot off';t.textContent='Offline';return false}
+    try{d.className='dot wait';t.textContent='...';
+        const r=await fetch(C.url+'/scanner-pending',{signal:AbortSignal.timeout(5000)});
+        if(r.ok){d.className='dot on';t.textContent='☁️ מחובר ✓';syncP();return true}
+    }catch(e){}
+    d.className='dot off';t.textContent='לא מחובר';return false
+}
+setInterval(chk,30000);
+
+// Scanner
+function tScan(){scanning?stopS():startS()}
+function startS(){
+    if(AC.state==='suspended')AC.resume();
+    const cfg={fps:10,qrbox:{width:250,height:120},formatsToSupport:[0,2,4,3,7,6,12]};
+    sc=new Html5Qrcode('cam');
+    sc.start({facingMode:'environment'},cfg,onS,()=>{}).then(()=>{scanning=true;document.getElementById('bScan').textContent='⏹️ עצור';document.getElementById('bScan').classList.add('on')}).catch(e=>toast('❌ '+e,'err'))
+}
+function stopS(){if(!sc)return;sc.stop().then(()=>{scanning=false;document.getElementById('bScan').textContent='📷 סרוק';document.getElementById('bScan').classList.remove('on')}).catch(()=>{})}
+let lc='',lt=0;
+function onS(c){if(c===lc&&Date.now()-lt<2500)return;lc=c;lt=Date.now();if(navigator.vibrate)navigator.vibrate(80);beep();scan(c)}
+function tFlash(){if(!sc||!scanning)return;flash=!flash;sc.applyVideoConstraints({advanced:[{torch:flash}]}).catch(()=>{})}
+
+// Scan
+async function scan(c){
+    if(!c||!c.trim())return;c=c.trim();toast('✅ '+c,'ok');
+    const e={id:Date.now().toString(),code:c,time:new Date().toLocaleTimeString('he-IL'),date:new Date().toLocaleDateString('he-IL'),ts:new Date().toISOString(),dev:C.dev||'מסופון',ok:false,res:null};
+    S.unshift(e);if(S.length>500)S.pop();sav();ren();
+    if(C.url&&!C.off){
+        try{const r=await fetch(C.url+'/scanner-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({barcode:c,device:C.dev||'מסופון'}),signal:AbortSignal.timeout(10000)});
+            const d=await r.json();e.ok=true;if(d.item){e.res=d.item;showCard(d.item)}sav();ren();upb()
+        }catch(x){upb()}
+    }else upb()
+}
+
+function showCard(i){
+    if(!i){document.getElementById('rc').innerHTML='';return}
+    const q=i.qty??'?',n=parseFloat(q),sc=isNaN(n)?'':n>10?'grn':n>0?'ylw':'red';
+    document.getElementById('rc').innerHTML=`<div class="card"><div class="num">${i.item||'—'}</div><div class="desc">${i.description||'—'}</div><div class="grid"><div class="box qb"><div class="l">מלאי</div><div class="v ${sc}">${q}</div></div><div class="box"><div class="l">מחסן</div><div class="v">${i.warehouse||'—'}</div></div><div class="box"><div class="l">LOT</div><div class="v">${i.lot||'—'}</div></div></div></div>`
+}
+
+// Sync
+async function syncP(){
+    if(!C.url||C.off)return;const pend=S.filter(s=>!s.ok);if(!pend.length)return;
+    document.getElementById('dot').className='dot wait';let n=0;
+    for(const s of pend){try{const r=await fetch(C.url+'/scanner-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({barcode:s.code,device:s.dev}),signal:AbortSignal.timeout(5000)});if(r.ok){s.ok=true;n++}}catch(e){break}}
+    if(n){sav();ren();toast(`📡 ${n} סונכרנו`,'ok')}upb();chk()
+}
+
+function upb(){const n=S.filter(s=>!s.ok).length;document.getElementById('pc').textContent=n;document.getElementById('pbar').classList.toggle('show',n>0)}
+
+// History
+function sav(){localStorage.setItem('wss',JSON.stringify(S))}
+function ren(){
+    document.getElementById('ht').textContent=`📋 (${S.length})`;
+    const e=document.getElementById('sl');
+    if(!S.length){e.innerHTML='<div style="text-align:center;color:#475569;padding:30px;font-size:12px">סרוק ברקוד להתחלה</div>';return}
+    e.innerHTML=S.slice(0,50).map(s=>`<div class="srow" onclick="scan('${s.code}')"><div><div class="code">${s.code}</div><div class="dsc">${s.res?.description||s.res?.item||'—'}</div></div><div><div class="tm">${s.time}</div><div class="ss ${s.ok?'synced':'pending'}">${s.ok?'✓':'⏳'}</div></div></div>`).join('')
+}
+function clr(){S=[];sav();ren();document.getElementById('rc').innerHTML='';upb();toast('🗑️ נוקה')}
+
+// Init
+if(C.url||C.off){document.getElementById('setup').style.display='none';document.getElementById('app').classList.add('on');chk()}
+ren();upb();
+</script>
+</body>
+</html>
