@@ -586,7 +586,7 @@ function renderDft(ts){
             ${['item','description','mh','surplusShortage','locations'].map(k=>
                 `<button onclick="dftSortBy('${k}')" style="padding:4px 8px;background:${dftSortKey===k?'var(--blue)':'var(--card)'};color:${dftSortKey===k?'#fff':'var(--muted)'};border:1px solid var(--border);border-radius:6px;font-size:10px;cursor:pointer">${{item:'Item',description:'Desc',mh:'MH',surplusShortage:'S/S',locations:'Loc'}[k]}${arrow(k)}</button>`
             ).join('')}
-            ${totalOrders?`<span style="color:var(--yellow);font-size:10px;align-self:center">📦 ${totalOrders} הזמנות</span>`:''}
+            ${totalOrders?`<button onclick="dftFinish()" style="padding:6px 14px;background:var(--green);color:#000;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">✅ Finish (${totalOrders})</button>`:''}
         </div>
         ${sorted.map(r=>{
             const qty=dftOrders[r.item]||0;
@@ -600,6 +600,40 @@ function renderDft(ts){
                 <div style="display:flex;justify-content:space-between;margin-top:4px;direction:ltr"><span style="font-size:10px;color:var(--dim)">MH: ${Math.round(r.mh)}</span><span style="font-size:10px;color:var(--dim)">${r.locations}</span></div>
             </div>`
         }).join('')}`;
+}
+
+async function dftFinish(){
+    const orders=Object.entries(dftOrders).filter(([k,v])=>v>0);
+    if(!orders.length){toast('אין הזמנות','err');return}
+    
+    // Build order list with item details
+    const orderList=orders.map(([item,qty])=>{
+        const r=dftData.find(d=>d.item===item);
+        return {item, qty, description:r?.description||'', mh:Math.round(r?.mh||0), surplusShortage:Math.round(r?.surplusShortage||0), locations:r?.locations||''}
+    });
+    
+    toast('📤 שולח הזמנות...','ok');
+    
+    // Send to n8n
+    if(C.url&&!C.off){
+        try{
+            const controller=new AbortController();
+            const timer=setTimeout(()=>controller.abort(),10000);
+            await fetch(C.url+'/scanner-scan',{
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({barcode:'__DFT_ORDERS__',device:C.dev||'מסופון',orders:orderList,timestamp:new Date().toISOString()}),
+                signal:controller.signal
+            });
+            clearTimeout(timer);
+            toast(`✅ ${orders.length} הזמנות נשלחו!`,'ok');
+            if(navigator.vibrate) navigator.vibrate([100,50,100]);
+            // Clear orders
+            dftOrders={};
+            localStorage.setItem('wso2','{}');
+            renderDft();
+        }catch(e){toast('❌ שליחה נכשלה','err')}
+    }else{toast('❌ לא מחובר','err')}
 }
 
 function handleWsDft(data){dftData=data;localStorage.setItem('wsd',JSON.stringify({data,ts:new Date().toISOString(),sort:{key:dftSortKey,dir:dftSortDir}}));if(document.getElementById('tDft').classList.contains('on'))renderDft()}
