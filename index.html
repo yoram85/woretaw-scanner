@@ -189,6 +189,7 @@
     <div class="tabs">
         <div class="tab on" onclick="stab('scan')">📷</div>
         <div class="tab" onclick="stab('hist')">📋</div>
+        <div class="tab" onclick="stab('dft')">📋</div>
         <div class="tab" onclick="stab('fav')">⭐</div>
         <div class="tab" onclick="stab('set')">⚙️</div>
     </div>
@@ -225,6 +226,17 @@
             </div>
             <div class="search-bar"><input type="text" id="histSearch" placeholder="🔍 חפש בהיסטוריה..." oninput="ren()"></div>
             <div class="slist" id="sl"></div>
+        </div>
+    </div>
+
+    <!-- DFT DEMAND TAB -->
+    <div class="content" id="tDft">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h3 style="font-size:13px;color:var(--muted)">📋 DFT DEMAND</h3>
+            <span id="dftTime" style="font-size:10px;color:var(--dim)"></span>
+        </div>
+        <div id="dftList" style="max-height:75vh;overflow-y:auto">
+            <div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">הנתונים מתעדכנים מהמחשב</div>
         </div>
     </div>
 
@@ -322,8 +334,9 @@ setInterval(chk,30000);
 function stab(t){
     document.querySelectorAll('.content').forEach(c=>c.classList.remove('on'));
     document.querySelectorAll('.tab').forEach(c=>c.classList.remove('on'));
-    const map={scan:'tScan',hist:'tHist',fav:'tFav',set:'tSet'};
-    const idx=['scan','hist','fav','set'].indexOf(t);
+    const map={scan:'tScan',hist:'tHist',dft:'tDft',fav:'tFav',set:'tSet'};
+    const idx=['scan','hist','dft','fav','set'].indexOf(t);
+    if(t==='dft') loadDft();
     document.getElementById(map[t]).classList.add('on');
     document.querySelectorAll('.tab')[idx].classList.add('on');
     if(t==='hist')ren();if(t==='fav')renFav();
@@ -488,6 +501,47 @@ function lset(){const o=JSON.parse(localStorage.getItem('wso')||'{}');
 // ===== INIT =====
 lset();ren();renFav();upb();
 setTimeout(chk,1500);
+
+// ===== DFT DEMAND =====
+let dftData=[];
+async function loadDft(){
+    const el=document.getElementById('dftList');
+    const url=C.url;
+    if(!url||C.off){
+        // Try loading from localStorage cache
+        const cached=JSON.parse(localStorage.getItem('wsd')||'null');
+        if(cached){dftData=cached.data;renderDft(cached.ts);return}
+        el.innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">לא מחובר — אין נתונים</div>';return
+    }
+    el.innerHTML='<div style="text-align:center;color:var(--yellow);padding:30px">⏳ טוען...</div>';
+    try{
+        // For n8n mode, fetch from local server (DFT runs on MIGM1266 not n8n)
+        // Try direct server first
+        const serverUrl=C.localUrl||url.replace('/webhook','');
+        const r=await fetch((serverUrl.includes('n8n')?url:serverUrl)+'/api/terminal/dft-demand',{signal:AbortSignal?.timeout?.(10000)});
+        const d=await r.json();
+        if(d.data&&d.data.length){dftData=d.data;localStorage.setItem('wsd',JSON.stringify({data:d.data,ts:d.timestamp}));renderDft(d.timestamp)}
+        else{el.innerHTML='<div style="text-align:center;color:var(--green);padding:30px">✅ אין חוסרים!</div>'}
+    }catch(e){
+        // Try cache
+        const cached=JSON.parse(localStorage.getItem('wsd')||'null');
+        if(cached){dftData=cached.data;renderDft(cached.ts)}
+        else el.innerHTML='<div style="text-align:center;color:var(--red);padding:30px">❌ לא ניתן לטעון</div>'
+    }
+}
+function renderDft(ts){
+    document.getElementById('dftTime').textContent=ts?new Date(ts).toLocaleString('he-IL'):'';
+    const el=document.getElementById('dftList');
+    if(!dftData.length){el.innerHTML='<div style="text-align:center;color:var(--green);padding:30px">✅ אין חוסרים!</div>';return}
+    el.innerHTML=dftData.map(r=>`<div class="srow" style="flex-direction:column;align-items:stretch">
+        <div style="display:flex;justify-content:space-between"><span class="code">${r.item}</span><span style="color:var(--red);font-weight:700;font-size:13px">${r.surplusShortage}</span></div>
+        <div class="dsc">${r.description}</div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-size:10px;color:var(--dim)">MH: ${r.mh}</span><span style="font-size:10px;color:var(--dim)">${r.locations}</span></div>
+    </div>`).join('')
+}
+
+// Handle DFT push via WebSocket (if connected locally)
+function handleWsDft(data){dftData=data;localStorage.setItem('wsd',JSON.stringify({data,ts:new Date().toISOString()}));if(document.getElementById('tDft').classList.contains('on'))renderDft()}
 
 // PWA
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
