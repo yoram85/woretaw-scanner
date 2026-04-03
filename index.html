@@ -6,8 +6,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
     <title>📱 Woretaw Scanner</title>
-    <!-- Self-contained — no external dependencies except barcode scanner -->
+    <!-- Self-contained PWA — works offline -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -219,6 +222,19 @@ function clr(){S=[];sav();ren();document.getElementById('rc').innerHTML='';upb()
 // Init
 if(C.url||C.off){document.getElementById('setup').style.display='none';document.getElementById('app').classList.add('on');chk()}
 ren();upb();
+
+// PWA — Service Worker + Install
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
+
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;
+  // Show install banner
+  const b=document.createElement('div');
+  b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,#3b82f6,#2563eb);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;z-index:9999';
+  b.innerHTML='<span style="font-size:13px;font-weight:600">📱 התקן כאפליקציה</span><div><button onclick="installPWA()" style="background:#fff;color:#2563eb;border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer;margin-left:8px">התקן</button><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:rgba(255,255,255,0.7);cursor:pointer;font-size:18px">✕</button></div>';
+  document.body.appendChild(b);
+});
+function installPWA(){if(deferredPrompt){deferredPrompt.prompt();deferredPrompt.userChoice.then(()=>{deferredPrompt=null;document.querySelector('[style*="beforeinstall"]')?.remove()})}}
 </script>
 </body>
 </html>
