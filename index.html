@@ -354,9 +354,12 @@ function onS(c){if(c===lc&&Date.now()-lt<2500)return;lc=c;lt=Date.now();
     if(gTgl('tSnd'))beepOk();vib([80]);scan(c);
     if(!gTgl('tCont'))stopS()}
 
-function tFlash(){if(!sc||!scanning)return;flash=!flash;
-    document.getElementById('bFlash').classList.toggle('on',flash);
-    sc.applyVideoConstraints({advanced:[{torch:flash}]}).catch(()=>{})}
+function tFlash(){if(!sc||!scanning){toast('❌ הפעל סריקה קודם','err');return}
+    flash=!flash;document.getElementById('bFlash').classList.toggle('on',flash);
+    try{const track=sc.getRunningTrackCameraCapabilities?.()?.track||document.querySelector('#cam video')?.srcObject?.getVideoTracks()[0];
+        if(track)track.applyConstraints({advanced:[{torch:flash}]}).catch(()=>toast('❌ פנס לא נתמך','err'));
+        else toast('❌ פנס לא נתמך','err');
+    }catch(e){toast('❌ פנס לא נתמך','err')}}
 
 // Scan from gallery
 function scanFromImage(input){
