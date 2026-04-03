@@ -506,27 +506,33 @@ setTimeout(chk,1500);
 let dftData=[];
 async function loadDft(){
     const el=document.getElementById('dftList');
-    const url=C.url;
-    if(!url||C.off){
-        // Try loading from localStorage cache
-        const cached=JSON.parse(localStorage.getItem('wsd')||'null');
-        if(cached){dftData=cached.data;renderDft(cached.ts);return}
-        el.innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">לא מחובר — אין נתונים</div>';return
+    // Always try cache first
+    const cached=JSON.parse(localStorage.getItem('wsd')||'null');
+    if(cached&&cached.data){dftData=cached.data;renderDft(cached.ts)}
+    
+    if(!C.url||C.off){
+        if(!cached) el.innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">לא מחובר — אין נתונים</div>';
+        return
     }
-    el.innerHTML='<div style="text-align:center;color:var(--yellow);padding:30px">⏳ טוען...</div>';
+    
+    // Try to get latest from n8n (scan for __DFT_DEMAND__ entries)
     try{
-        // For n8n mode, fetch from local server (DFT runs on MIGM1266 not n8n)
-        // Try direct server first
-        const serverUrl=C.localUrl||url.replace('/webhook','');
-        const r=await fetch((serverUrl.includes('n8n')?url:serverUrl)+'/api/terminal/dft-demand',{signal:AbortSignal?.timeout?.(10000)});
+        el.innerHTML=cached?el.innerHTML:'<div style="text-align:center;color:var(--yellow);padding:30px">⏳ טוען...</div>';
+        const controller=new AbortController();
+        const timer=setTimeout(()=>controller.abort(),10000);
+        const r=await fetch(C.url+'/scanner-pending',{signal:controller.signal});
+        clearTimeout(timer);
         const d=await r.json();
-        if(d.data&&d.data.length){dftData=d.data;localStorage.setItem('wsd',JSON.stringify({data:d.data,ts:d.timestamp}));renderDft(d.timestamp)}
-        else{el.innerHTML='<div style="text-align:center;color:var(--green);padding:30px">✅ אין חוסרים!</div>'}
+        // Look for DFT data
+        if(d.dftDemand&&d.dftDemand.data&&d.dftDemand.data.length){
+            dftData=d.dftDemand.data;
+            localStorage.setItem('wsd',JSON.stringify({data:dftData,ts:d.dftDemand.timestamp}));
+            renderDft(d.dftDemand.timestamp);
+            return
+        }
+        if(!cached||!cached.data) el.innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">אין נתוני DFT — הרץ סריקה מהדאשבורד</div>';
     }catch(e){
-        // Try cache
-        const cached=JSON.parse(localStorage.getItem('wsd')||'null');
-        if(cached){dftData=cached.data;renderDft(cached.ts)}
-        else el.innerHTML='<div style="text-align:center;color:var(--red);padding:30px">❌ לא ניתן לטעון</div>'
+        if(!cached) el.innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">אין נתוני DFT — הרץ סריקה מהדאשבורד</div>'
     }
 }
 function renderDft(ts){
