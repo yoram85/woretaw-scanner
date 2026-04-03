@@ -598,9 +598,9 @@ function renderDft(ts){
                 ontouchstart="touchStartX=event.touches[0].clientX"
                 ontouchend="if(touchStartX-event.changedTouches[0].clientX>80)dftSwipeReset('${r.item}')">
                 ${qty?`<div style="position:absolute;top:4px;left:4px;background:var(--yellow);color:#000;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800">${qty}</div>`:''}
-                <div style="display:flex;justify-content:space-between;direction:ltr"><span class="code">${r.item}</span><span style="color:var(--red);font-weight:700;font-size:13px">${Math.round(r.surplusShortage)}</span></div>
+                <div style="display:flex;justify-content:space-between;direction:ltr"><span class="code">${r.item}</span><span style="color:var(--blue);font-weight:700;font-size:14px">${r.locations}</span></div>
                 <div class="dsc" style="direction:ltr;text-align:left">${r.description}</div>
-                <div style="display:flex;justify-content:space-between;margin-top:4px;direction:ltr"><span style="font-size:10px;color:var(--dim)">MH: ${Math.round(r.mh)}</span><span style="font-size:10px;color:var(--dim)">${r.locations}</span></div>
+                <div style="display:flex;justify-content:space-between;margin-top:4px;direction:ltr"><span style="font-size:10px;color:var(--dim)">MH: ${Math.round(r.mh)}</span><span style="color:var(--red);font-weight:700;font-size:12px">${Math.round(r.surplusShortage)}</span></div>
             </div>`
         }).join('')}`;
 }
