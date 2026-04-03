@@ -504,9 +504,12 @@ setTimeout(chk,1500);
 
 // ===== DFT DEMAND =====
 let dftData=[];
+let dftOrders=JSON.parse(localStorage.getItem('wso2')||'{}'); // {item: clickCount}
+let dftSortKey='item', dftSortDir='asc';
+let touchStartX=0;
+
 async function loadDft(){
     const el=document.getElementById('dftList');
-    // Always try cache first
     const cached=JSON.parse(localStorage.getItem('wsd')||'null');
     if(cached&&cached.data){dftData=cached.data;renderDft(cached.ts)}
     
@@ -515,7 +518,6 @@ async function loadDft(){
         return
     }
     
-    // Try to get latest from n8n (scan for __DFT_DEMAND__ entries)
     try{
         el.innerHTML=cached?el.innerHTML:'<div style="text-align:center;color:var(--yellow);padding:30px">⏳ טוען...</div>';
         const controller=new AbortController();
@@ -523,10 +525,9 @@ async function loadDft(){
         const r=await fetch(C.url+'/scanner-pending',{signal:controller.signal});
         clearTimeout(timer);
         const d=await r.json();
-        // Look for DFT data
         if(d.dftDemand&&d.dftDemand.data&&d.dftDemand.data.length){
             dftData=d.dftDemand.data;
-            localStorage.setItem('wsd',JSON.stringify({data:dftData,ts:d.dftDemand.timestamp}));
+            localStorage.setItem('wsd',JSON.stringify({data:dftData,ts:d.dftDemand.timestamp,sort:{key:dftSortKey,dir:dftSortDir}}));
             renderDft(d.dftDemand.timestamp);
             return
         }
@@ -535,19 +536,73 @@ async function loadDft(){
         if(!cached) el.innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">אין נתוני DFT — הרץ סריקה מהדאשבורד</div>'
     }
 }
+
+function dftTapItem(item){
+    if(!dftOrders[item]) dftOrders[item]=0;
+    dftOrders[item]++;
+    if(navigator.vibrate) navigator.vibrate(30);
+    localStorage.setItem('wso2',JSON.stringify(dftOrders));
+    renderDft();
+}
+
+function dftSwipeReset(item){
+    delete dftOrders[item];
+    localStorage.setItem('wso2',JSON.stringify(dftOrders));
+    toast('↩️ '+item+' אופס','');
+    renderDft();
+}
+
+function dftSortBy(key){
+    if(dftSortKey===key) dftSortDir=dftSortDir==='asc'?'desc':'asc';
+    else{dftSortKey=key;dftSortDir='asc'}
+    // Save sort preference
+    const cached=JSON.parse(localStorage.getItem('wsd')||'{}');
+    cached.sort={key:dftSortKey,dir:dftSortDir};
+    localStorage.setItem('wsd',JSON.stringify(cached));
+    renderDft();
+}
+
 function renderDft(ts){
+    // Restore sort from cache
+    const cached=JSON.parse(localStorage.getItem('wsd')||'{}');
+    if(cached.sort){dftSortKey=cached.sort.key;dftSortDir=cached.sort.dir}
+    
     document.getElementById('dftTime').textContent=ts?new Date(ts).toLocaleString('he-IL'):'';
     const el=document.getElementById('dftList');
     if(!dftData.length){el.innerHTML='<div style="text-align:center;color:var(--green);padding:30px">✅ אין חוסרים!</div>';return}
-    el.innerHTML=dftData.map(r=>`<div class="srow" style="flex-direction:column;align-items:stretch">
-        <div style="display:flex;justify-content:space-between"><span class="code">${r.item}</span><span style="color:var(--red);font-weight:700;font-size:13px">${Math.round(r.surplusShortage)}</span></div>
-        <div class="dsc">${r.description}</div>
-        <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-size:10px;color:var(--dim)">MH: ${Math.round(r.mh)}</span><span style="font-size:10px;color:var(--dim)">${r.locations}</span></div>
-    </div>`).join('')
+    
+    // Sort
+    const sorted=[...dftData].sort((a,b)=>{
+        let va=a[dftSortKey]??'',vb=b[dftSortKey]??'';
+        if(typeof va==='number'&&typeof vb==='number') return dftSortDir==='asc'?va-vb:vb-va;
+        return dftSortDir==='asc'?String(va).localeCompare(String(vb)):String(vb).localeCompare(String(va))
+    });
+    
+    const arrow=(k)=>dftSortKey===k?(dftSortDir==='asc'?' ▲':' ▼'):'';
+    const totalOrders=Object.values(dftOrders).reduce((s,v)=>s+v,0);
+    
+    el.innerHTML=`
+        <div style="direction:ltr;display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+            ${['item','description','mh','surplusShortage','locations'].map(k=>
+                `<button onclick="dftSortBy('${k}')" style="padding:4px 8px;background:${dftSortKey===k?'var(--blue)':'var(--card)'};color:${dftSortKey===k?'#fff':'var(--muted)'};border:1px solid var(--border);border-radius:6px;font-size:10px;cursor:pointer">${{item:'Item',description:'Desc',mh:'MH',surplusShortage:'S/S',locations:'Loc'}[k]}${arrow(k)}</button>`
+            ).join('')}
+            ${totalOrders?`<span style="color:var(--yellow);font-size:10px;align-self:center">📦 ${totalOrders} הזמנות</span>`:''}
+        </div>
+        ${sorted.map(r=>{
+            const qty=dftOrders[r.item]||0;
+            return `<div class="srow" style="flex-direction:column;align-items:stretch;position:relative;border-right:${qty?'3px solid var(--yellow)':'none'}"
+                onclick="dftTapItem('${r.item}')"
+                ontouchstart="touchStartX=event.touches[0].clientX"
+                ontouchend="if(touchStartX-event.changedTouches[0].clientX>80)dftSwipeReset('${r.item}')">
+                ${qty?`<div style="position:absolute;top:4px;left:4px;background:var(--yellow);color:#000;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800">${qty}</div>`:''}
+                <div style="display:flex;justify-content:space-between;direction:ltr"><span class="code">${r.item}</span><span style="color:var(--red);font-weight:700;font-size:13px">${Math.round(r.surplusShortage)}</span></div>
+                <div class="dsc" style="direction:ltr;text-align:left">${r.description}</div>
+                <div style="display:flex;justify-content:space-between;margin-top:4px;direction:ltr"><span style="font-size:10px;color:var(--dim)">MH: ${Math.round(r.mh)}</span><span style="font-size:10px;color:var(--dim)">${r.locations}</span></div>
+            </div>`
+        }).join('')}`;
 }
 
-// Handle DFT push via WebSocket (if connected locally)
-function handleWsDft(data){dftData=data;localStorage.setItem('wsd',JSON.stringify({data,ts:new Date().toISOString()}));if(document.getElementById('tDft').classList.contains('on'))renderDft()}
+function handleWsDft(data){dftData=data;localStorage.setItem('wsd',JSON.stringify({data,ts:new Date().toISOString(),sort:{key:dftSortKey,dir:dftSortDir}}));if(document.getElementById('tDft').classList.contains('on'))renderDft()}
 
 // PWA
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
