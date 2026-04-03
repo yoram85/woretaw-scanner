@@ -233,7 +233,10 @@
     <div class="content" id="tDft">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <h3 style="font-size:13px;color:var(--muted)">📋 DFT DEMAND</h3>
-            <span id="dftTime" style="font-size:10px;color:var(--dim)"></span>
+            <div style="display:flex;gap:6px;align-items:center">
+                <span id="dftTime" style="font-size:10px;color:var(--dim)"></span>
+                <button onclick="clearDftPwa()" style="background:none;border:none;color:var(--red);font-size:11px;cursor:pointer">🗑️ נקה</button>
+            </div>
         </div>
         <div id="dftList" style="max-height:75vh;overflow-y:auto">
             <div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">הנתונים מתעדכנים מהמחשב</div>
@@ -600,6 +603,14 @@ function renderDft(ts){
                 <div style="display:flex;justify-content:space-between;margin-top:4px;direction:ltr"><span style="font-size:10px;color:var(--dim)">MH: ${Math.round(r.mh)}</span><span style="font-size:10px;color:var(--dim)">${r.locations}</span></div>
             </div>`
         }).join('')}`;
+}
+
+function clearDftPwa(){
+    dftData=[];dftOrders={};
+    localStorage.removeItem('wsd');localStorage.setItem('wso2','{}');
+    document.getElementById('dftList').innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">נוקה — הרץ סריקה מהדאשבורד</div>';
+    document.getElementById('dftTime').textContent='';
+    toast('🗑️ DFT נוקה');
 }
 
 async function dftFinish(){
