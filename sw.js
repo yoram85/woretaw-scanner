@@ -1,4 +1,4 @@
-const CACHE = 'woretaw-scanner-v5';
+const CACHE = 'woretaw-scanner-v6';
 const ASSETS = [
   '/woretaw-scanner/',
   '/woretaw-scanner/index.html',
