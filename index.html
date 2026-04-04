@@ -186,10 +186,12 @@
     </div>
     <div class="pbar" id="pbar">📡 <span id="pc">0</span> ממתינות לסנכרון</div>
 
+    <div style="display:flex;padding:4px 12px;background:#1a2744;gap:6px">
+        <button onclick="stab('dft')" id="btnDftTab" style="flex:1;padding:8px;background:linear-gradient(135deg,#1e3a5f,#0f172a);color:#3b82f6;border:1px solid #334155;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📋 DFT DEMAND</button>
+    </div>
     <div class="tabs">
         <div class="tab on" onclick="stab('scan')">📷</div>
         <div class="tab" onclick="stab('hist')">📋</div>
-        <div class="tab" onclick="stab('dft')">📋</div>
         <div class="tab" onclick="stab('loc')">📍</div>
         <div class="tab" onclick="stab('recv')">📥</div>
         <div class="tab" onclick="stab('fav')">⭐</div>
@@ -368,8 +370,9 @@ function stab(t){
     document.querySelectorAll('.content').forEach(c=>c.classList.remove('on'));
     document.querySelectorAll('.tab').forEach(c=>c.classList.remove('on'));
     const map={scan:'tScan',hist:'tHist',dft:'tDft',loc:'tLoc',recv:'tRecv',fav:'tFav',set:'tSet'};
-    const idx=['scan','hist','dft','loc','recv','fav','set'].indexOf(t);
-    if(t==='dft') loadDft();
+    const idx=['scan','hist','loc','recv','fav','set'].indexOf(t);
+    if(t==='dft'){loadDft();document.getElementById('btnDftTab').style.background='linear-gradient(135deg,#3b82f6,#2563eb)';document.getElementById('btnDftTab').style.color='#fff'}
+    else{document.getElementById('btnDftTab').style.background='linear-gradient(135deg,#1e3a5f,#0f172a)';document.getElementById('btnDftTab').style.color='#3b82f6'}
     document.getElementById(map[t]).classList.add('on');
     document.querySelectorAll('.tab')[idx].classList.add('on');
     if(t==='hist')ren();if(t==='fav')renFav();
@@ -665,6 +668,11 @@ let touchStartX=0;
 
 async function loadDft(){
     const el=document.getElementById('dftList');
+    // If cleared, don't load from cache
+    if(localStorage.getItem('wsd_cleared')==='1'){
+        el.innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">נוקה — הרץ סריקה מהדאשבורד</div>';
+        return;
+    }
     const cached=JSON.parse(localStorage.getItem('wsd')||'null');
     if(cached&&cached.data){dftData=cached.data;renderDft(cached.ts)}
     
@@ -682,6 +690,7 @@ async function loadDft(){
         const d=await r.json();
         if(d.dftDemand&&d.dftDemand.data&&d.dftDemand.data.length){
             dftData=d.dftDemand.data;
+            localStorage.removeItem('wsd_cleared');
             localStorage.setItem('wsd',JSON.stringify({data:dftData,ts:d.dftDemand.timestamp,sort:{key:dftSortKey,dir:dftSortDir}}));
             renderDft(d.dftDemand.timestamp);
             return
@@ -760,6 +769,7 @@ function renderDft(ts){
 function clearDftPwa(){
     dftData=[];dftOrders={};
     localStorage.removeItem('wsd');localStorage.setItem('wso2','{}');
+    localStorage.setItem('wsd_cleared','1');
     document.getElementById('dftList').innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">נוקה — הרץ סריקה מהדאשבורד</div>';
     document.getElementById('dftTime').textContent='';
     toast('🗑️ DFT נוקה');
