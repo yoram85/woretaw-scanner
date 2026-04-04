@@ -268,7 +268,7 @@
                 <h4 id="recvCount" style="font-size:12px;color:var(--dim)">📋 רשימה (0)</h4>
                 <button onclick="clearRecvList()" style="background:none;border:none;color:var(--red);font-size:11px;cursor:pointer">🗑️ נקה</button>
             </div>
-            <div id="recvList" style="max-height:250px;overflow-y:auto"></div>
+            <div id="recvListEl" style="max-height:250px;overflow-y:auto"></div>
             <button id="btnRecvSubmit" onclick="submitReceiveAll()" style="display:none;width:100%;margin-top:10px;padding:14px;background:var(--green);color:#000;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">📥 קבל ושלח לדאשבורד</button>
         </div>
     </div>
@@ -582,76 +582,75 @@ async function searchLocation(item){
 }
 
 // ===== RECEIVE =====
-let recvList=JSON.parse(localStorage.getItem('wsrl')||'[]');
+let _recvItems=JSON.parse(localStorage.getItem('wsrl')||'[]');
 
 function addToRecvList(){
-    const item=document.getElementById('recvItem').value.trim();
-    const qty=parseFloat(document.getElementById('recvQty').value)||0;
-    if(!item){toast('הכנס מק"ט','err');return}
-    if(!qty){toast('הכנס כמות','err');return}
+    const itemEl=document.getElementById('recvItem');
+    const qtyEl=document.getElementById('recvQty');
+    const item=(itemEl.value||'').trim();
+    const qty=parseFloat(qtyEl.value)||0;
+    if(!item){toast('הכנס מק"ט','err');itemEl.focus();return}
+    if(!qty||qty<=0){toast('הכנס כמות','err');qtyEl.focus();return}
     
-    // Check if item already in list — add qty
-    const existing=recvList.find(r=>r.item===item);
+    const existing=_recvItems.find(function(r){return r.item===item});
     if(existing){existing.qty+=qty}
-    else{recvList.push({item,qty,ts:new Date().toISOString()})}
+    else{_recvItems.push({item:item,qty:qty,ts:new Date().toISOString()})}
     
-    localStorage.setItem('wsrl',JSON.stringify(recvList));
+    localStorage.setItem('wsrl',JSON.stringify(_recvItems));
     renderRecvList();
     
-    document.getElementById('recvItem').value='';
-    document.getElementById('recvQty').value='';
-    document.getElementById('recvItem').focus();
+    itemEl.value='';
+    qtyEl.value='';
+    itemEl.focus();
     
     if(navigator.vibrate)navigator.vibrate(50);
     beepOk();
-    toast(`➕ ${item} x${qty}`,'ok');
+    toast('➕ '+item+' x'+qty,'ok');
 }
 
-function removeFromRecvList(item){
-    recvList=recvList.filter(r=>r.item!==item);
-    localStorage.setItem('wsrl',JSON.stringify(recvList));
+function removeFromRecvList(itemCode){
+    _recvItems=_recvItems.filter(function(r){return r.item!==itemCode});
+    localStorage.setItem('wsrl',JSON.stringify(_recvItems));
     renderRecvList();
 }
 
 function clearRecvList(){
-    recvList=[];localStorage.setItem('wsrl','[]');renderRecvList();toast('🗑️ נוקה');
+    _recvItems=[];localStorage.setItem('wsrl','[]');renderRecvList();toast('🗑️ נוקה');
 }
 
 async function submitReceiveAll(){
-    if(!recvList.length){toast('הרשימה ריקה','err');return}
+    if(!_recvItems.length){toast('הרשימה ריקה','err');return}
     
     toast('📤 שולח...','ok');
     
     if(C.url&&!C.off){
         try{
-            const controller=new AbortController();
-            const timer=setTimeout(()=>controller.abort(),10000);
+            var controller=new AbortController();
+            var timer=setTimeout(function(){controller.abort()},10000);
             await fetch(C.url+'/scanner-scan',{
                 method:'POST',headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({barcode:'__RECEIVE__',device:C.dev||'מסופון',receiveList:recvList,timestamp:new Date().toISOString()}),
+                body:JSON.stringify({barcode:'__RECEIVE__',device:C.dev||'מסופון',receiveList:_recvItems,timestamp:new Date().toISOString()}),
                 signal:controller.signal});
             clearTimeout(timer);
             if(navigator.vibrate)navigator.vibrate([100,50,100]);
-            toast(`✅ ${recvList.length} פריטים נשלחו!`,'ok');
-            recvList=[];localStorage.setItem('wsrl','[]');renderRecvList();
+            toast('✅ '+_recvItems.length+' פריטים נשלחו!','ok');
+            _recvItems=[];localStorage.setItem('wsrl','[]');renderRecvList();
         }catch(e){toast('❌ שליחה נכשלה','err')}
     }else{toast('❌ לא מחובר','err')}
 }
 
 function renderRecvList(){
-    const el=document.getElementById('recvList');
-    document.getElementById('recvCount').textContent=`📋 רשימה (${recvList.length})`;
-    document.getElementById('btnRecvSubmit').style.display=recvList.length?'block':'none';
-    if(!recvList.length){el.innerHTML='<div style="text-align:center;color:var(--dim);padding:20px;font-size:12px">סרוק פריטים להוספה</div>';return}
-    el.innerHTML=recvList.map(r=>`<div class="srow" style="direction:ltr;text-align:left"
-        ontouchstart="touchStartX=event.touches[0].clientX"
-        ontouchend="if(touchStartX-event.changedTouches[0].clientX>80)removeFromRecvList('${r.item}')">
-        <div><div class="code">${r.item}</div></div>
-        <div style="display:flex;align-items:center;gap:8px">
-            <span style="color:var(--green);font-weight:800;font-size:16px">x${r.qty}</span>
-            <button onclick="removeFromRecvList('${r.item}')" style="background:none;border:none;color:var(--red);font-size:14px;cursor:pointer">✕</button>
-        </div>
-    </div>`).join('')
+    var el=document.getElementById('recvListEl');
+    if(!el)return;
+    document.getElementById('recvCount').textContent='📋 רשימה ('+_recvItems.length+')';
+    document.getElementById('btnRecvSubmit').style.display=_recvItems.length?'block':'none';
+    if(!_recvItems.length){el.innerHTML='<div style="text-align:center;color:var(--dim);padding:20px;font-size:12px">סרוק פריטים להוספה</div>';return}
+    var html='';
+    for(var i=0;i<_recvItems.length;i++){
+        var r=_recvItems[i];
+        html+='<div class="srow" style="direction:ltr;text-align:left"><div><div class="code">'+r.item+'</div></div><div style="display:flex;align-items:center;gap:8px"><span style="color:var(--green);font-weight:800;font-size:16px">x'+r.qty+'</span><button onclick="removeFromRecvList(\''+r.item+'\')" style="background:none;border:none;color:var(--red);font-size:14px;cursor:pointer;padding:8px">✕</button></div></div>';
+    }
+    el.innerHTML=html
 }
 
 // ===== DFT DEMAND =====
