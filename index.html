@@ -304,14 +304,8 @@
             </div>
         </div>
         <div class="sgrp">
-            <h3>📱 מכשיר</h3>
-            <div class="srow2">
-                <label>שם מכשיר</label>
-                <input type="text" id="setDevName" style="padding:8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font-size:13px;width:140px" onchange="C.dev=this.value.trim()||'מסופון';localStorage.setItem('wsc',JSON.stringify(C));toast('✅ נשמר')">
-            </div>
-        </div>
-        <div class="sgrp">
             <h3>🔗 חיבור</h3>
+            <div class="srow2"><label>שם מכשיר</label><span id="sDevDisplay" style="font-size:12px;color:var(--blue)">—</span></div>
             <div class="srow2"><label>שרת</label><span id="sConn" style="font-size:12px">—</span></div>
             <div class="srow2"><label></label><button class="btn" style="width:auto;padding:8px 16px;font-size:12px" onclick="document.getElementById('app').classList.remove('on');document.getElementById('setup').style.display='block'">⚙️ שנה הגדרות</button></div>
         </div>
@@ -379,7 +373,7 @@ function stab(t){
     const map={scan:'tScan',hist:'tHist',dft:'tDft',loc:'tLoc',recv:'tRecv',fav:'tFav',set:'tSet'};
     const idx=['scan','hist','dft','loc','recv','fav','set'].indexOf(t);
     if(t==='dft') loadDft();
-    if(t==='set'){ var dn=document.getElementById('setDevName'); if(dn)dn.value=C.dev||''; }
+    if(t==='set'){ var dd=document.getElementById('sDevDisplay'); if(dd)dd.textContent=C.dev||'—'; }
     document.getElementById(map[t]).classList.add('on');
     document.querySelectorAll('.tab')[idx].classList.add('on');
     if(t==='hist')ren();if(t==='fav')renFav();
