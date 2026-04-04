@@ -190,6 +190,8 @@
         <div class="tab on" onclick="stab('scan')">📷</div>
         <div class="tab" onclick="stab('hist')">📋</div>
         <div class="tab" onclick="stab('dft')">📋</div>
+        <div class="tab" onclick="stab('loc')">📍</div>
+        <div class="tab" onclick="stab('recv')">📥</div>
         <div class="tab" onclick="stab('fav')">⭐</div>
         <div class="tab" onclick="stab('set')">⚙️</div>
     </div>
@@ -240,6 +242,42 @@
         </div>
         <div id="dftList" style="max-height:75vh;overflow-y:auto">
             <div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">הנתונים מתעדכנים מהמחשב</div>
+        </div>
+    </div>
+
+    <!-- LOCATION TAB -->
+    <div class="content" id="tLoc">
+        <h3 style="font-size:13px;color:var(--muted);margin-bottom:12px">📍 חיפוש מיקום</h3>
+        <div class="inp">
+            <input type="text" id="locInput" placeholder="סרוק או הקלד מק״ט..." inputmode="text" autocomplete="off" onkeydown="if(event.key==='Enter')searchLocation(this.value)">
+            <button onclick="searchLocation(document.getElementById('locInput').value)">🔍</button>
+        </div>
+        <div id="locResult"></div>
+    </div>
+
+    <!-- RECEIVE TAB -->
+    <div class="content" id="tRecv">
+        <h3 style="font-size:13px;color:var(--muted);margin-bottom:12px">📥 קבלת סחורה</h3>
+        <div style="display:flex;flex-direction:column;gap:8px;direction:ltr">
+            <input type="text" id="recvItem" placeholder="Item (scan or type)" style="padding:12px;background:var(--card);border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-family:monospace" onkeydown="if(event.key==='Enter')document.getElementById('recvQty').focus()">
+            <div style="display:flex;gap:8px">
+                <input type="number" id="recvQty" placeholder="QTY" style="flex:1;padding:12px;background:var(--card);border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:16px;text-align:center" onkeydown="if(event.key==='Enter')document.getElementById('recvWh').focus()">
+                <select id="recvWh" style="flex:1;padding:12px;background:var(--card);border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:14px">
+                    <option value="ANB">ANB</option>
+                    <option value="MH">MH</option>
+                    <option value="HPS">HPS</option>
+                    <option value="MNC">MNC</option>
+                    <option value="SEL">SEL</option>
+                    <option value="JUL">JUL</option>
+                </select>
+            </div>
+            <input type="text" id="recvLot" placeholder="LOT (optional)" style="padding:10px;background:var(--card);border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:13px">
+            <input type="text" id="recvNote" placeholder="Note (optional)" style="padding:10px;background:var(--card);border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:13px">
+            <button onclick="submitReceive()" style="padding:14px;background:var(--green);color:#000;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">📥 קבל</button>
+        </div>
+        <div style="margin-top:12px">
+            <h4 style="font-size:12px;color:var(--dim);margin-bottom:8px">📋 קבלות אחרונות</h4>
+            <div id="recvLog" style="max-height:300px;overflow-y:auto"></div>
         </div>
     </div>
 
@@ -337,8 +375,8 @@ setInterval(chk,30000);
 function stab(t){
     document.querySelectorAll('.content').forEach(c=>c.classList.remove('on'));
     document.querySelectorAll('.tab').forEach(c=>c.classList.remove('on'));
-    const map={scan:'tScan',hist:'tHist',dft:'tDft',fav:'tFav',set:'tSet'};
-    const idx=['scan','hist','dft','fav','set'].indexOf(t);
+    const map={scan:'tScan',hist:'tHist',dft:'tDft',loc:'tLoc',recv:'tRecv',fav:'tFav',set:'tSet'};
+    const idx=['scan','hist','dft','loc','recv','fav','set'].indexOf(t);
     if(t==='dft') loadDft();
     document.getElementById(map[t]).classList.add('on');
     document.querySelectorAll('.tab')[idx].classList.add('on');
@@ -502,8 +540,111 @@ function lset(){const o=JSON.parse(localStorage.getItem('wso')||'{}');
 }
 
 // ===== INIT =====
-lset();ren();renFav();upb();
+lset();ren();renFav();upb();renderRecvLog();
 setTimeout(chk,1500);
+
+// ===== LOCATION SEARCH =====
+async function searchLocation(item){
+    if(!item||!item.trim())return;item=item.trim();
+    const el=document.getElementById('locResult');
+    el.innerHTML='<div style="text-align:center;color:var(--yellow);padding:20px">⏳ מחפש...</div>';
+    
+    // Try local server first, then n8n scan
+    try{
+        // Send as scan to get item info
+        if(C.url&&!C.off){
+            const controller=new AbortController();
+            const timer=setTimeout(()=>controller.abort(),10000);
+            const r=await fetch(C.url+'/scanner-scan',{
+                method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({barcode:item,device:C.dev||'מסופון'}),signal:controller.signal});
+            clearTimeout(timer);
+            const d=await r.json();
+            if(d.item){
+                el.innerHTML=`<div class="card" style="direction:ltr;text-align:left">
+                    <div class="num">${d.item.item||item}</div>
+                    <div class="desc">${d.item.description||'—'}</div>
+                    <div class="grid">
+                        <div class="box qb"><div class="l">Stock</div><div class="v ${d.item.qty>10?'grn':d.item.qty>0?'ylw':'red'}">${d.item.qty??'?'}</div></div>
+                        <div class="box"><div class="l">Warehouse</div><div class="v">${d.item.warehouse||'—'}</div></div>
+                        <div class="box"><div class="l">LOT</div><div class="v">${d.item.lot||'—'}</div></div>
+                    </div>
+                </div>`;
+                return;
+            }
+        }
+        // Search in cached DFT data
+        const match=dftData.find(r=>r.item===item||r.item.includes(item));
+        if(match){
+            el.innerHTML=`<div class="card" style="direction:ltr;text-align:left">
+                <div class="num">${match.item}</div>
+                <div class="desc">${match.description||'—'}</div>
+                <div class="grid">
+                    <div class="box"><div class="l">Locations</div><div class="v" style="color:var(--blue)">${match.locations||'—'}</div></div>
+                    <div class="box"><div class="l">MH</div><div class="v">${Math.round(match.mh)}</div></div>
+                    <div class="box"><div class="l">Shortage</div><div class="v red">${Math.round(match.surplusShortage)}</div></div>
+                </div>
+            </div>`;
+        } else el.innerHTML='<div style="text-align:center;color:var(--dim);padding:20px">❌ פריט לא נמצא</div>';
+    }catch(e){el.innerHTML='<div style="text-align:center;color:var(--red);padding:20px">❌ שגיאה</div>'}
+}
+
+// ===== RECEIVE =====
+let recvLog=JSON.parse(localStorage.getItem('wsrl')||'[]');
+
+async function submitReceive(){
+    const item=document.getElementById('recvItem').value.trim();
+    const qty=parseFloat(document.getElementById('recvQty').value)||0;
+    const wh=document.getElementById('recvWh').value;
+    const lot=document.getElementById('recvLot').value.trim();
+    const note=document.getElementById('recvNote').value.trim();
+    
+    if(!item){toast('הכנס מק"ט','err');return}
+    if(!qty){toast('הכנס כמות','err');return}
+    
+    const entry={id:Date.now().toString(),item,qty,warehouse:wh,lot,note,device:C.dev||'מסופון',timestamp:new Date().toISOString(),synced:false};
+    recvLog.unshift(entry);if(recvLog.length>200)recvLog.pop();
+    localStorage.setItem('wsrl',JSON.stringify(recvLog));
+    renderRecvLog();
+    
+    // Clear inputs
+    document.getElementById('recvItem').value='';
+    document.getElementById('recvQty').value='';
+    document.getElementById('recvLot').value='';
+    document.getElementById('recvNote').value='';
+    document.getElementById('recvItem').focus();
+    
+    if(navigator.vibrate)navigator.vibrate(80);
+    beepOk();
+    toast(`📥 ${item} x${qty} → ${wh}`,'ok');
+    
+    // Send to n8n
+    if(C.url&&!C.off){
+        try{
+            const controller=new AbortController();
+            const timer=setTimeout(()=>controller.abort(),10000);
+            await fetch(C.url+'/scanner-scan',{
+                method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({barcode:'__RECEIVE__',device:C.dev||'מסופון',receive:entry}),
+                signal:controller.signal});
+            clearTimeout(timer);
+            entry.synced=true;
+            localStorage.setItem('wsrl',JSON.stringify(recvLog));
+            renderRecvLog();
+        }catch(e){}
+    }
+}
+
+function renderRecvLog(){
+    const el=document.getElementById('recvLog');
+    if(!recvLog.length){el.innerHTML='<div style="text-align:center;color:var(--dim);padding:20px;font-size:12px">אין קבלות</div>';return}
+    el.innerHTML=recvLog.slice(0,30).map(r=>`<div class="srow" style="direction:ltr;text-align:left">
+        <div><div class="code">${r.item} <span style="color:var(--green);font-weight:700">x${r.qty}</span></div>
+        <div class="dsc">${r.warehouse} ${r.lot?'LOT:'+r.lot:''} ${r.note||''}</div></div>
+        <div style="text-align:right"><div class="tm">${new Date(r.timestamp).toLocaleTimeString('he-IL')}</div>
+        <div class="ss ${r.synced?'synced':'pending'}">${r.synced?'✓':'⏳'}</div></div>
+    </div>`).join('')
+}
 
 // ===== DFT DEMAND =====
 let dftData=[];
