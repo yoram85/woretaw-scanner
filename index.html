@@ -339,7 +339,7 @@ function gTgl(id){return document.getElementById(id)?.classList.contains('on')}
 setTimeout(()=>{
     document.getElementById('splash').classList.add('hide');
     setTimeout(()=>document.getElementById('splash').style.display='none',500);
-    if(C.url||C.off){document.getElementById('app').classList.add('on')}
+    if((C.url||C.off)&&C.dev){document.getElementById('app').classList.add('on')}
     else{document.getElementById('setup').style.display='block'}
 },1200);
 
@@ -348,8 +348,10 @@ let tt;function toast(t,c){const e=document.getElementById('toast');e.textConten
 
 // ===== SETUP =====
 function go(off){
+    var dev=document.getElementById('sDev').value.trim();
+    if(!dev){alert('חובה להכניס שם מכשיר!');document.getElementById('sDev').focus();return}
     C.url=(document.getElementById('sUrl').value||'').trim().replace(/\/+$/,'');
-    C.dev=document.getElementById('sDev').value.trim()||'מסופון';
+    C.dev=dev;
     C.off=!!off;
     localStorage.setItem('wsc',JSON.stringify(C));
     document.getElementById('setup').style.display='none';
