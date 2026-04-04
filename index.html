@@ -256,12 +256,12 @@
     </div>
 
     <!-- RECEIVE TAB -->
-    <div class="content" id="tRecv">
+    <div class="content" id="tRecv" style="overflow-y:auto">
         <h3 style="font-size:13px;color:var(--muted);margin-bottom:12px">📥 קבלת סחורה</h3>
-        <div style="display:flex;flex-direction:column;gap:8px;direction:ltr">
-            <input type="text" id="recvItem" placeholder="Scan or type Item..." style="padding:12px;background:var(--card);border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-family:monospace" onkeydown="if(event.key==='Enter')document.getElementById('recvQty').focus()">
-            <input type="number" id="recvQty" placeholder="QTY" style="padding:12px;background:var(--card);border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:16px;text-align:center" onkeydown="if(event.key==='Enter')addToRecvList()">
-            <button onclick="addToRecvList()" style="padding:12px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">➕ הוסף לרשימה</button>
+        <div style="display:flex;gap:8px;direction:ltr;flex-wrap:wrap">
+            <input type="text" id="recvItem" placeholder="Item..." style="flex:2;min-width:120px;padding:12px;background:var(--card);border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-family:monospace" onkeydown="if(event.key==='Enter')document.getElementById('recvQty').focus()">
+            <input type="number" id="recvQty" placeholder="QTY" style="flex:1;min-width:60px;padding:12px;background:var(--card);border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:16px;text-align:center" onkeydown="if(event.key==='Enter')addToRecvList()">
+            <button onclick="addToRecvList()" style="padding:12px 20px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;white-space:nowrap">➕</button>
         </div>
         <div style="margin-top:12px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
