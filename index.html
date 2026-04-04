@@ -532,7 +532,7 @@ function lset(){const o=JSON.parse(localStorage.getItem('wso')||'{}');
 }
 
 // ===== INIT =====
-lset();ren();renFav();upb();renderRecvList();
+try{lset();ren();renFav();upb();renderRecvList();console.log('✅ All init OK')}catch(e){alert('INIT ERROR: '+e.message+' at line '+e.stack)}
 setTimeout(chk,1500);
 
 // ===== LOCATION SEARCH =====
@@ -585,10 +585,12 @@ async function searchLocation(item){
 let _recvItems=JSON.parse(localStorage.getItem('wsrl')||'[]');
 
 function addToRecvList(){
-    const itemEl=document.getElementById('recvItem');
-    const qtyEl=document.getElementById('recvQty');
-    const item=(itemEl.value||'').trim();
-    const qty=parseFloat(qtyEl.value)||0;
+    try{
+    var itemEl=document.getElementById('recvItem');
+    var qtyEl=document.getElementById('recvQty');
+    if(!itemEl||!qtyEl){alert('ERROR: elements not found');return}
+    var item=(itemEl.value||'').trim();
+    var qty=parseFloat(qtyEl.value)||0;
     if(!item){toast('הכנס מק"ט','err');itemEl.focus();return}
     if(!qty||qty<=0){toast('הכנס כמות','err');qtyEl.focus();return}
     
@@ -606,6 +608,7 @@ function addToRecvList(){
     if(navigator.vibrate)navigator.vibrate(50);
     beepOk();
     toast('➕ '+item+' x'+qty,'ok');
+    }catch(e){alert('Error in addToRecvList: '+e.message)}
 }
 
 function removeFromRecvList(itemCode){
