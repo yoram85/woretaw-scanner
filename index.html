@@ -532,7 +532,8 @@ function lset(){const o=JSON.parse(localStorage.getItem('wso')||'{}');
 }
 
 // ===== INIT =====
-try{lset();ren();renFav();upb();renderRecvList();console.log('✅ All init OK')}catch(e){alert('INIT ERROR: '+e.message+' at line '+e.stack)}
+var _recvItems=JSON.parse(localStorage.getItem('wsrl')||'[]');
+try{lset();ren();renFav();upb();renderRecvList();console.log('All init OK')}catch(e){alert('INIT ERROR: '+e.message)}
 setTimeout(chk,1500);
 
 // ===== LOCATION SEARCH =====
@@ -582,7 +583,7 @@ async function searchLocation(item){
 }
 
 // ===== RECEIVE =====
-let _recvItems=JSON.parse(localStorage.getItem('wsrl')||'[]');
+// _recvItems already declared above in init
 
 function addToRecvList(){
     try{
