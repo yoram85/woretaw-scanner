@@ -167,7 +167,7 @@
     <p>סורק ברקוד עצמאי — עובד מכל מקום</p>
     <div class="fld">
         <label>כתובת n8n Webhook</label>
-        <input type="url" id="sUrl" placeholder="https://yoram1985.app.n8n.cloud/webhook" value="https://yoram1985.app.n8n.cloud/webhook">
+        <input type="url" id="sUrl" placeholder="https://n8n.woretaw.net/webhook" value="https://n8n.woretaw.net/webhook">
         <div class="hint">סריקות נשלחות דרך n8n לשרת המחסן</div>
     </div>
     <div class="fld">
@@ -318,6 +318,9 @@
 <script>
 // ===== STATE =====
 let C=JSON.parse(localStorage.getItem('wsc')||'{}');
+// Migration 2026-08-25: the old n8n cloud instance retired — move saved configs to n8n.woretaw.net
+if(C.url&&C.url.indexOf('app.n8n.cloud')!==-1){C.url='https://n8n.woretaw.net/webhook';localStorage.setItem('wsc',JSON.stringify(C));}
+if(!C.url){C.url='https://n8n.woretaw.net/webhook';}
 let S=JSON.parse(localStorage.getItem('wss')||'[]');
 let F=JSON.parse(localStorage.getItem('wsf')||'[]'); // favorites
 let batch=[];
