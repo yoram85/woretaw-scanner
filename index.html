@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f172a">
@@ -15,7 +15,7 @@
      through n8n exactly like the APK (scanner-scan for scans, the
      woretaw-term queue for chat/location/users, with access code + target
      server in the settings). -->
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="html5-qrcode.min.js" defer></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html { max-width:100%; overflow-x:hidden; }
@@ -103,7 +103,7 @@
   .group { background:#1e293b; border-radius:12px; padding:14px; margin:0 12px 10px; }
   .group-title { font-size:12px; color:#64748b; margin-bottom:10px; font-weight:600; }
   .lbl { font-size:13px; color:#fff; margin:8px 0 4px; display:block; }
-  .field { width:100%; background:#0f172a; border:1px solid #334155; border-radius:8px; padding:10px; color:#fff; font-size:14px; text-align:right; }
+  .field { width:100%; background:#0f172a; border:1px solid #334155; border-radius:8px; padding:10px; color:#fff; font-size:16px; text-align:right; }
   .field:focus { outline:none; border-color:#3b82f6; }
   .hint { color:#64748b; font-size:10px; margin-top:4px; line-height:1.6; }
   .opts { display:flex; flex-direction:row; flex-wrap:wrap; gap:8px; margin-top:6px; }
@@ -165,7 +165,7 @@
   </div>
   <div class="input-row">
     <button class="icon-btn" onclick="doScan(document.getElementById('manual').value)">🔍</button>
-    <input id="manual" placeholder="הקלד מק״ט…" autocomplete="off" autocapitalize="characters">
+    <input id="manual" type="text" inputmode="text" enterkeyhint="search" placeholder="הקלד מק״ט…" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false">
   </div>
   <div id="scanResult"></div>
   <div class="list-hdr">
@@ -193,7 +193,7 @@
 <div class="screen" id="scLoc">
   <div class="input-row" style="margin-top:12px">
     <button class="icon-btn" onclick="locSearch(document.getElementById('locQuery').value)">🔍</button>
-    <input id="locQuery" placeholder="הקלד מק״ט…" autocomplete="off" autocapitalize="characters">
+    <input id="locQuery" type="text" inputmode="text" enterkeyhint="search" placeholder="הקלד מק״ט…" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false">
   </div>
   <div id="locResult"></div>
 </div>
@@ -220,7 +220,7 @@
   <div id="chatList" style="padding:12px;max-height:calc(100vh - 250px);overflow-y:auto"></div>
   <div style="position:fixed;bottom:78px;left:0;right:0;display:flex;gap:8px;padding:10px 12px;background:#0f172a;border-top:1px solid #1e293b">
     <button class="icon-btn" onclick="chatSend()">➤</button>
-    <input class="field" id="chatInput" placeholder="הודעה לכולם…" autocomplete="off" style="flex:1">
+    <input class="field" id="chatInput" type="text" enterkeyhint="send" placeholder="הודעה לכולם…" autocomplete="off" style="flex:1;font-size:16px">
   </div>
 </div>
 
@@ -292,7 +292,14 @@
 <div class="toast" id="toast"></div>
 
 <script>
-var PWA_VERSION = '4.0.1';
+window.onerror = function(msg, src, line){
+  try {
+    var el = document.getElementById('toast');
+    if (el) { el.textContent = '⚠ שגיאה: ' + msg + ' (' + line + ')'; el.className = 'toast show err'; }
+  } catch(e){}
+  return false;
+};
+var PWA_VERSION = '4.0.2';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {

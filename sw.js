@@ -1,9 +1,9 @@
-const CACHE = 'woretaw-scanner-v20260831b';
+const CACHE = 'woretaw-scanner-v20260831c';
 const ASSETS = [
   '/woretaw-scanner/',
   '/woretaw-scanner/index.html',
   '/woretaw-scanner/manifest.json',
-  'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'
+  '/woretaw-scanner/html5-qrcode.min.js'
 ];
 
 // Install — cache all assets
