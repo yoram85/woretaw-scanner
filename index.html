@@ -1,828 +1,914 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="theme-color" content="#0f172a">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="icon-192.png">
-    <title>📱 Woretaw Scanner</title>
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-    <style>
-        :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--blue:#3b82f6;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--text:#fff;--muted:#94a3b8;--dim:#475569;--font:'Segoe UI',Tahoma,sans-serif}
-        *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-        body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;min-height:100dvh;direction:rtl;font-size:var(--fs,14px);transition:background .3s,color .3s}
-        body.light{--bg:#f1f5f9;--card:#fff;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;--dim:#94a3b8}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f172a">
+<link rel="manifest" href="manifest.json">
+<title>Woretaw Scanner</title>
+<!-- Cowork 2026-08-31 (Yoram): the PWA is now the SAME terminal as the
+     in-browser terminal.html on the plant server — same five+chat tabs, same
+     look, same behaviour. The one structural difference: this page is served
+     from GitHub Pages, so it cannot reach the plant server directly; it talks
+     through n8n exactly like the APK (scanner-scan for scans, the
+     woretaw-term queue for chat/location/users, with access code + target
+     server in the settings). -->
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html { max-width:100%; overflow-x:hidden; }
+  body { font-family:'Segoe UI',Tahoma,Arial,sans-serif; background:#0f172a; color:#fff;
+         min-height:100vh; min-height:100dvh; direction:rtl; overflow-x:hidden; }
 
-        /* Splash */
-        .splash{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .5s}
-        .splash.hide{opacity:0;pointer-events:none}
-        .splash .logo{font-size:64px;animation:bounce 1s ease infinite}
-        .splash .title{font-size:18px;font-weight:700;margin-top:12px;color:var(--blue)}
-        .splash .sub{font-size:11px;color:var(--muted);margin-top:6px}
-        @keyframes bounce{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+  /* Header — matches the app's navigation header */
+  .hdr { background:#0f172a; padding:12px 16px; display:flex; align-items:center; justify-content:space-between;
+         position:sticky; top:0; z-index:100; border-bottom:1px solid #1e293b; }
+  .hdr h1 { font-size:17px; font-weight:700; }
+  .hdr .right { display:flex; align-items:center; gap:10px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:#ef4444; }
+  .dot.on { background:#22c55e; box-shadow:0 0 6px #22c55e; }
+  .dot.wait { background:#f59e0b; animation:pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .hdr .stat { font-size:11px; color:#94a3b8; }
+  .hdr .avatar { width:28px; height:28px; border-radius:50%; object-fit:cover; border:2px solid #3b82f6; }
 
-        .header{background:linear-gradient(135deg,#1e293b,#334155);padding:10px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100}
-        .header h1{font-size:1em}
-        .conn{display:flex;align-items:center;gap:6px;font-size:10px}
-        .dot{width:8px;height:8px;border-radius:50%;transition:.3s}
-        .dot.on{background:var(--green);box-shadow:0 0 6px var(--green)}
-        .dot.off{background:var(--red)}
-        .dot.wait{background:var(--yellow);animation:p 1s infinite}
-        @keyframes p{0%,100%{opacity:1}50%{opacity:.3}}
+  /* Screens */
+  .screen { display:none; padding-bottom:78px; }
+  .screen.on { display:block; }
 
-        /* Tabs */
-        .tabs{display:flex;background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:42px;z-index:99}
-        .tab{flex:1;padding:10px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent;transition:.2s;position:relative}
-        .tab.on{color:var(--blue);border-bottom-color:var(--blue);background:rgba(59,130,246,.08)}
-        .tab .badge{background:var(--red);color:#fff;border-radius:10px;padding:1px 5px;font-size:8px;position:absolute;top:4px;left:50%;margin-left:10px}
+  /* Camera */
+  .cam-wrap { width:calc(100% - 24px); height:250px; border-radius:12px; overflow:hidden; margin:12px; background:#000; position:relative; display:none; }
+  .cam-wrap.on { display:block; }
+  #reader { width:100%; height:100%; }
+  #reader video { width:100% !important; height:100% !important; object-fit:cover; }
+  .laser { position:absolute; top:50%; left:10%; right:10%; height:2px; background:#ef4444; opacity:.7; pointer-events:none; }
+  .cooldown { position:absolute; top:10px; left:50%; transform:translateX(-50%); background:rgba(15,23,42,.85);
+              padding:6px 14px; border-radius:14px; color:#f59e0b; font-weight:700; font-size:13px; }
 
-        .content{padding:12px;display:none;min-height:calc(100vh - 92px)}
-        .content.on{display:block}
+  .controls { display:flex; flex-direction:row; gap:8px; padding:0 12px; margin-bottom:8px; }
+  .scan-btn { flex:1; background:#3b82f6; border:none; border-radius:10px; padding:14px; color:#fff; font-weight:700; font-size:15px; cursor:pointer; }
+  .scan-btn.active { background:#ef4444; }
+  .torch-btn { background:#334155; border:none; border-radius:10px; padding:14px; width:52px; color:#fff; font-size:18px; cursor:pointer; }
+  .torch-btn.active { background:#f59e0b; color:#000; }
 
-        /* Setup */
-        .setup{padding:20px;max-width:420px;margin:0 auto}
-        .setup h2{text-align:center;margin-bottom:8px}
-        .setup p{text-align:center;color:var(--muted);font-size:12px;margin-bottom:20px}
-        .fld{margin-bottom:14px}
-        .fld label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
-        .fld input,.fld select{width:100%;padding:12px;background:var(--card);border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:14px}
-        .fld input:focus{border-color:var(--blue);outline:none}
-        .fld .hint{font-size:10px;color:var(--dim);margin-top:4px}
-        .btn{width:100%;padding:14px;background:linear-gradient(135deg,var(--blue),#2563eb);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px}
-        .btn:active{transform:scale(.98)}
-        .btn.off{background:var(--border);color:var(--muted);font-size:12px}
+  .input-row { display:flex; flex-direction:row; gap:8px; padding:0 12px; margin-bottom:12px; }
+  .input-row input { flex:1; text-transform:uppercase; background:#1e293b; border:2px solid #334155; border-radius:10px; padding:12px;
+                     color:#fff; font-size:16px; font-family:'Courier New',monospace; text-align:right; letter-spacing:1px; }
+  .input-row input:focus { outline:none; border-color:#3b82f6; }
+  .icon-btn { background:#3b82f6; border:none; border-radius:10px; width:48px; color:#fff; font-size:18px; cursor:pointer; }
 
-        .app{display:none}.app.on{display:block}
+  /* Result card */
+  .card { background:#1e3a5f; border-radius:12px; padding:16px; margin:0 12px 12px; border:1px solid rgba(59,130,246,.3); }
+  .card-hdr { display:flex; flex-direction:row; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .card-num { font-size:18px; font-weight:800; color:#3b82f6; font-family:'Courier New',monospace; }
+  .card-desc { font-size:13px; color:#cbd5e1; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,.1); }
+  .card-grid { display:flex; flex-direction:row; gap:8px; }
+  .card-box { flex:1; background:rgba(0,0,0,.2); border-radius:8px; padding:8px; }
+  .card-box.big { flex:2; text-align:center; }
+  .card-lbl { font-size:10px; color:#64748b; }
+  .card-val { font-size:14px; font-weight:700; margin-top:2px; }
+  .card-qty { font-size:32px; font-weight:900; margin-top:4px; }
+  .in-stock { color:#22c55e; } .low-stock { color:#f59e0b; } .no-stock { color:#ef4444; }
 
-        /* Scanner */
-        #cam{width:100%;max-width:420px;margin:0 auto;border-radius:12px;overflow:hidden;background:#000;min-height:200px;position:relative}
-        .laser{position:absolute;top:50%;left:10%;right:10%;height:2px;background:linear-gradient(90deg,transparent,var(--red),transparent);z-index:5;animation:laser 2s ease-in-out infinite;pointer-events:none;display:none}
-        .laser.on{display:block}
-        @keyframes laser{0%,100%{transform:translateY(-40px)}50%{transform:translateY(40px)}}
+  /* Lists */
+  .list-hdr { display:flex; flex-direction:row; justify-content:space-between; align-items:center; padding:0 12px; margin-bottom:8px; }
+  .list-title { font-size:13px; color:#64748b; font-weight:600; }
+  .link-danger { background:none; border:none; color:#ef4444; font-size:12px; cursor:pointer; }
+  .row { background:#1e293b; border-radius:8px; padding:12px; margin:0 12px 6px; display:flex; flex-direction:row;
+         justify-content:space-between; align-items:center; border:1px solid #334155; cursor:pointer; position:relative; }
+  .row-code { font-size:14px; font-weight:700; color:#3b82f6; font-family:'Courier New',monospace; }
+  .row-desc { font-size:11px; color:#94a3b8; margin-top:2px; }
+  .row-time { font-size:10px; color:#475569; }
+  .empty { text-align:center; color:#475569; padding:40px 20px; font-size:13px; line-height:1.7; }
 
-        .ctrls{display:flex;gap:8px;padding:12px}
-        .ctrls button{flex:1;padding:14px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:.1s}
-        .ctrls button:active{transform:scale(.97)}
-        .c-scan{background:linear-gradient(135deg,var(--blue),#2563eb);color:#fff}
-        .c-scan.on{background:linear-gradient(135deg,var(--red),#dc2626)}
-        .c-flash{background:var(--border);color:#fff;flex:0 0 50px!important}
-        .c-flash.on{background:var(--yellow);color:#000}
-        .c-gallery{background:var(--border);color:#fff;flex:0 0 50px!important}
+  /* DFT */
+  .dft-bar { display:flex; flex-direction:row; justify-content:space-between; align-items:center; padding:12px; }
+  .dft-actions { display:flex; gap:8px; }
+  .chip { padding:8px 10px; border-radius:8px; border:none; font-size:12px; font-weight:600; cursor:pointer; }
+  .chip.blue { background:#3b82f6; color:#fff; } .chip.grey { background:#334155; color:#ef4444; } .chip.green { background:#22c55e; color:#000; }
+  .sorts { display:flex; gap:6px; padding:0 12px 8px; flex-wrap:wrap; }
+  .sort-btn { padding:5px 8px; background:#334155; color:#94a3b8; border:none; border-radius:6px; font-size:10px; font-weight:600; cursor:pointer; }
+  .sort-btn.on { background:#3b82f6; color:#fff; }
+  .dft-row { display:block; }
+  .dft-row.ordered { border-right:3px solid #f59e0b; }
+  .badge { position:absolute; top:4px; left:4px; background:#f59e0b; color:#000; border-radius:11px; width:22px; height:22px;
+           display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; }
+  .dft-line { display:flex; justify-content:space-between; }
+  .dft-loc { color:#3b82f6; font-weight:700; font-size:14px; }
+  .dft-mh { color:#475569; font-size:10px; } .dft-ss { color:#ef4444; font-weight:700; font-size:12px; }
 
-        .inp{display:flex;gap:8px;padding:0 12px 12px}
-        .inp input{flex:1;padding:12px;border:2px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-size:16px;font-family:monospace;letter-spacing:1px}
-        .inp input:focus{border-color:var(--blue);outline:none}
-        .inp button{padding:12px 18px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-weight:700;font-size:16px}
+  /* Settings */
+  .group { background:#1e293b; border-radius:12px; padding:14px; margin:0 12px 10px; }
+  .group-title { font-size:12px; color:#64748b; margin-bottom:10px; font-weight:600; }
+  .lbl { font-size:13px; color:#fff; margin:8px 0 4px; display:block; }
+  .field { width:100%; background:#0f172a; border:1px solid #334155; border-radius:8px; padding:10px; color:#fff; font-size:14px; text-align:right; }
+  .field:focus { outline:none; border-color:#3b82f6; }
+  .hint { color:#64748b; font-size:10px; margin-top:4px; line-height:1.6; }
+  .opts { display:flex; flex-direction:row; flex-wrap:wrap; gap:8px; margin-top:6px; }
+  .opt { padding:8px 14px; border-radius:10px; background:#0f172a; border:1px solid #334155; color:#94a3b8;
+         font-weight:700; font-size:13px; cursor:pointer; }
+  .opt.on { background:#3b82f6; border-color:#3b82f6; color:#fff; }
+  .srv { display:block; width:100%; text-align:right; padding:12px; border-radius:10px; background:#0f172a;
+         border:1px solid #334155; color:#e2e8f0; margin-bottom:8px; cursor:pointer; }
+  .srv.on { background:#3b82f6; border-color:#3b82f6; color:#fff; }
+  .srv small { display:block; color:#64748b; font-size:10px; margin-top:2px; }
+  .srv.on small { color:#dbeafe; }
+  .btn { width:100%; background:#3b82f6; border:none; border-radius:10px; padding:14px; color:#fff; font-weight:700; font-size:15px; cursor:pointer; }
+  .info { text-align:center; color:#475569; font-size:11px; padding:20px; line-height:1.7; }
+  .avatar-big { width:100px; height:100px; border-radius:50%; border:3px solid #3b82f6; object-fit:cover; display:block; margin:0 auto; }
+  .avatar-ph { width:100px; height:100px; border-radius:50%; border:3px dashed #334155; display:flex; align-items:center;
+               justify-content:center; margin:0 auto; font-size:40px; color:#334155; }
 
-        /* Batch mode */
-        .batch-bar{background:var(--yellow);color:#000;text-align:center;padding:6px;font-size:11px;font-weight:600;display:none}
-        .batch-bar.on{display:flex;justify-content:space-between;align-items:center;padding:6px 12px}
-        .batch-bar button{background:#000;color:var(--yellow);border:none;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer}
+  /* Bottom tab bar — same order and icons as the app */
+  .tabs { position:fixed; bottom:0; left:0; right:0; display:flex; flex-direction:row; background:#1e293b;
+          border-top:1px solid #334155; z-index:200; padding-bottom:env(safe-area-inset-bottom); }
+  .tab { flex:1; padding:8px 2px 10px; text-align:center; color:#64748b; cursor:pointer; border:none; background:none; }
+  .tab.on { color:#3b82f6; }
+  .tab .ico { font-size:20px; display:block; line-height:1.2; }
+  .tab .txt { font-size:10px; font-weight:600; }
+  .tab .dotbadge { display:inline-block; min-width:16px; padding:0 4px; background:#f59e0b; color:#000; border-radius:8px;
+                   font-size:9px; font-weight:800; margin-right:3px; }
 
-        /* Item card */
-        .card{margin:0 12px 12px;background:linear-gradient(135deg,#1e3a5f,var(--card));border-radius:12px;padding:16px;border:1px solid rgba(59,130,246,.3);animation:su .3s ease}
-        @keyframes su{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-        .card .num{font-size:18px;font-weight:800;color:var(--blue);font-family:monospace;display:flex;justify-content:space-between;align-items:center}
-        .card .num .actions{display:flex;gap:4px}
-        .card .num .actions button{background:rgba(255,255,255,.1);border:none;color:#fff;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:12px}
-        .card .desc{font-size:13px;color:#cbd5e1;margin:6px 0}
-        .card .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-        .card .box{background:rgba(0,0,0,.2);border-radius:8px;padding:8px}
-        .card .box .l{font-size:10px;color:var(--dim)}
-        .card .box .v{font-size:14px;font-weight:700;margin-top:2px}
-        .card .qb{text-align:center;padding:12px;grid-column:span 2}
-        .card .qb .v{font-size:32px}
-        .grn{color:var(--green)}.ylw{color:var(--yellow)}.red{color:var(--red)}
-
-        /* History */
-        .hist{padding:0 12px}
-        .hist-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-        .hist-h h3{font-size:12px;color:var(--dim)}
-        .hist-h .hbtns{display:flex;gap:6px}
-        .hist-h button{background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer}
-        .search-bar{margin-bottom:8px}
-        .search-bar input{width:100%;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px}
-        .date-group{font-size:10px;color:var(--dim);padding:6px 0 2px;font-weight:600}
-        .slist{max-height:280px;overflow-y:auto}
-        .srow{background:var(--card);border-radius:8px;padding:10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);cursor:pointer}
-        .srow:active{background:var(--border)}
-        .srow .code{font-family:monospace;font-size:14px;font-weight:700;color:var(--blue)}
-        .srow .dsc{font-size:11px;color:var(--muted);margin-top:2px}
-        .srow .meta{text-align:left}
-        .srow .tm{font-size:10px;color:var(--dim)}
-        .srow .ss{font-size:9px}
-        .synced{color:var(--green)}.pending{color:var(--yellow)}
-        .srow .fav{color:var(--yellow);font-size:12px;cursor:pointer}
-        .srow .fav.off{color:var(--dim)}
-
-        /* Favorites tab */
-        .fav-list{max-height:70vh;overflow-y:auto}
-        .fav-item{background:var(--card);border-radius:8px;padding:12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border)}
-        .fav-item .code{font-family:monospace;font-size:16px;font-weight:700;color:var(--blue)}
-        .fav-item .note{font-size:11px;color:var(--muted)}
-        .fav-item button{background:none;border:none;color:var(--red);cursor:pointer}
-
-        /* Settings */
-        .sgrp{background:var(--card);border-radius:12px;padding:14px;margin-bottom:10px}
-        .sgrp h3{font-size:11px;color:var(--dim);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px}
-        .srow2{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05)}
-        .srow2:last-child{border:none}
-        .srow2 label{font-size:13px}
-        .srow2 select,.srow2 input[type="text"]{padding:8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font-size:13px}
-        .tgl{width:48px;height:26px;background:var(--border);border-radius:13px;position:relative;cursor:pointer;transition:.3s}
-        .tgl.on{background:var(--blue)}
-        .tgl::after{content:'';width:22px;height:22px;background:#fff;border-radius:50%;position:absolute;top:2px;right:2px;transition:.3s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
-        .tgl.on::after{right:24px}
-
-        .pbar{background:var(--yellow);color:#000;text-align:center;padding:6px;font-size:11px;font-weight:600;display:none}
-        .pbar.show{display:block}
-
-        .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--border);color:#fff;padding:10px 20px;border-radius:20px;font-size:12px;font-weight:600;box-shadow:0 4px 15px rgba(0,0,0,.3);z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90%}
-        .toast.show{opacity:1}.toast.ok{background:#16a34a}.toast.err{background:#dc2626}
-
-        .gear{position:fixed;bottom:16px;left:16px;width:40px;height:40px;background:var(--border);border:none;color:#fff;border-radius:50%;font-size:18px;cursor:pointer;z-index:50}
-
-        .info{text-align:center;font-size:10px;color:var(--dim);padding:20px}
-
-        /* Gallery input (hidden) */
-        #galleryInput{display:none}
-    </style>
+  /* Toast */
+  .toast { position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:#334155; color:#fff;
+           padding:10px 20px; border-radius:12px; font-size:12px; font-weight:600; z-index:999; opacity:0;
+           transition:opacity .3s; pointer-events:none; max-width:90%; text-align:center; }
+  .toast.show { opacity:1; }
+  .toast.ok { background:#16a34a; } .toast.err { background:#dc2626; }
+  pre.answer { color:#e2e8f0; font-size:14px; line-height:1.6; margin-top:8px; white-space:pre-wrap;
+               font-family:inherit; direction:ltr; text-align:left; }
+</style>
 </head>
 <body>
 
-<!-- SPLASH -->
-<div class="splash" id="splash">
-    <div class="logo">📱</div>
-    <div class="title">Woretaw Scanner</div>
-    <div class="sub">v3.0 — סורק ברקוד למחסן</div>
+<div class="hdr">
+  <h1 id="hdrTitle">📷 סריקה</h1>
+  <div class="right">
+    <img id="hdrAvatar" class="avatar" style="display:none" alt="">
+    <span class="stat" id="hdrStat">…</span>
+    <span class="dot" id="hdrDot"></span>
+  </div>
 </div>
 
-<!-- SETUP -->
-<div id="setup" class="setup" style="display:none">
-    <h2>📱 Woretaw Scanner</h2>
-    <p>סורק ברקוד עצמאי — עובד מכל מקום</p>
-    <div class="fld">
-        <label>כתובת n8n Webhook</label>
-        <input type="url" id="sUrl" placeholder="https://n8n.woretaw.net/webhook" value="https://n8n.woretaw.net/webhook">
-        <div class="hint">סריקות נשלחות דרך n8n לשרת המחסן</div>
-    </div>
-    <div class="fld">
-        <label>שם מכשיר</label>
-        <input type="text" id="sDev" placeholder="מסופון של יורם">
-    </div>
-    <button class="btn" onclick="go()">🚀 התחל</button>
-    <button class="btn off" onclick="go(true)">📴 Offline</button>
+<!-- ===================== SCAN ===================== -->
+<div class="screen on" id="scScan">
+  <div class="cam-wrap" id="camWrap">
+    <div id="reader"></div>
+    <div class="laser"></div>
+    <div class="cooldown" id="cooldown" style="display:none"></div>
+  </div>
+  <div class="controls">
+    <button class="scan-btn" id="btnScan">📷 סרוק</button>
+    <button class="torch-btn" id="btnTorch">🔦</button>
+  </div>
+  <div class="input-row">
+    <button class="icon-btn" onclick="doScan(document.getElementById('manual').value)">🔍</button>
+    <input id="manual" placeholder="הקלד מק״ט…" autocomplete="off" autocapitalize="characters">
+  </div>
+  <div id="scanResult"></div>
+  <div class="list-hdr">
+    <span class="list-title" id="histTitle">📋 היסטוריה (0)</span>
+    <button class="link-danger" onclick="clearHistory()">🗑️ נקה</button>
+  </div>
+  <div id="histList"></div>
 </div>
 
-<!-- APP -->
-<div id="app" class="app">
-    <div class="header">
-        <h1>📱 Woretaw Scanner</h1>
-        <div class="conn"><span class="dot" id="dot"></span><span id="ct">—</span></div>
+<!-- ===================== DFT ===================== -->
+<div class="screen" id="scDft">
+  <div class="dft-bar">
+    <div class="dft-actions">
+      <button class="chip grey" onclick="dftClearAll()">🗑️</button>
+      <button class="chip blue" id="btnDftLoad" onclick="dftLoad()">🔄 טען</button>
+      <button class="chip green" id="btnDftFinish" style="display:none" onclick="dftFinish()"></button>
     </div>
-    <div class="pbar" id="pbar">📡 <span id="pc">0</span> ממתינות לסנכרון</div>
+    <span style="color:#64748b;font-size:10px" id="dftTs"></span>
+  </div>
+  <div class="sorts" id="dftSorts"></div>
+  <div id="dftList"></div>
+</div>
 
-    <div class="tabs">
-        <div class="tab on" onclick="stab('scan')">📷</div>
-        <div class="tab" onclick="stab('hist')">📋</div>
-        <div class="tab" onclick="stab('dft')">📋</div>
-        <div class="tab" onclick="stab('loc')">📍</div>
-        <div class="tab" onclick="stab('recv')">📥</div>
-        <div class="tab" onclick="stab('fav')">⭐</div>
-        <div class="tab" onclick="stab('set')">⚙️</div>
-    </div>
+<!-- ===================== LOCATION ===================== -->
+<div class="screen" id="scLoc">
+  <div class="input-row" style="margin-top:12px">
+    <button class="icon-btn" onclick="locSearch(document.getElementById('locQuery').value)">🔍</button>
+    <input id="locQuery" placeholder="הקלד מק״ט…" autocomplete="off" autocapitalize="characters">
+  </div>
+  <div id="locResult"></div>
+</div>
 
-    <!-- SCAN TAB -->
-    <div class="content on" id="tScan">
-        <div id="cam"><div class="laser" id="laser"></div></div>
-        <div class="ctrls">
-            <button class="c-scan" id="bScan" onclick="tScan()">📷 סרוק</button>
+<!-- ===================== RECEIVE ===================== -->
+<div class="screen" id="scRecv">
+  <div style="display:flex;gap:8px;padding:12px">
+    <button class="icon-btn" style="width:52px" onclick="recvAdd()">➕</button>
+    <input class="field" id="recvQty" style="flex:1;text-align:left" placeholder="QTY" inputmode="decimal">
+    <input class="field" id="recvItem" style="flex:2;text-align:left;text-transform:uppercase" placeholder="Item…" autocapitalize="characters">
+  </div>
+  <div class="list-hdr">
+    <span class="list-title" id="recvTitle">📋 רשימה (0)</span>
+    <button class="link-danger" onclick="recvClear()">🗑️</button>
+  </div>
+  <div id="recvList"></div>
+  <div style="padding:12px" id="recvSubmitWrap"></div>
+</div>
 
-            <button class="c-gallery" onclick="document.getElementById('galleryInput').click()">🖼️</button>
-        </div>
-        <input type="file" id="galleryInput" accept="image/*" onchange="scanFromImage(this)">
-        <div class="batch-bar" id="batchBar">
-            <span>📦 מצב אצווה: <b id="batchCount">0</b> פריטים</span>
-            <div><button onclick="sendBatch()">📤 שלח</button> <button onclick="clearBatch()">✕</button></div>
-        </div>
-        <div class="inp">
-            <input type="text" id="bi" placeholder="הקלד מק״ט..." inputmode="text" autocomplete="off" onkeydown="if(event.key==='Enter'){scan(this.value);this.value=''}">
-            <button onclick="scan(document.getElementById('bi').value);document.getElementById('bi').value=''">🔍</button>
-        </div>
-        <div id="rc"></div>
-    </div>
+<!-- ===================== CHAT ===================== -->
+<div class="screen" id="scChat">
+  <div id="chatUsers" style="padding:8px 12px;border-bottom:1px solid #1e293b;font-size:11px;color:#94a3b8;cursor:pointer"></div>
+  <div id="chatList" style="padding:12px;max-height:calc(100vh - 250px);overflow-y:auto"></div>
+  <div style="position:fixed;bottom:78px;left:0;right:0;display:flex;gap:8px;padding:10px 12px;background:#0f172a;border-top:1px solid #1e293b">
+    <button class="icon-btn" onclick="chatSend()">➤</button>
+    <input class="field" id="chatInput" placeholder="הודעה לכולם…" autocomplete="off" style="flex:1">
+  </div>
+</div>
 
-    <!-- HISTORY TAB -->
-    <div class="content" id="tHist">
-        <div class="hist">
-            <div class="hist-h">
-                <h3 id="ht">📋 (0)</h3>
-                <div class="hbtns">
-                    <button onclick="shareHistory()">📤 שתף</button>
-                    <button onclick="clr()" style="color:var(--red)">🗑️ נקה</button>
-                </div>
-            </div>
-            <div class="search-bar"><input type="text" id="histSearch" placeholder="🔍 חפש בהיסטוריה..." oninput="ren()"></div>
-            <div class="slist" id="sl"></div>
-        </div>
-    </div>
+<!-- ===================== SETTINGS ===================== -->
+<div class="screen" id="scSet">
+  <div id="setLock" style="padding:40px 20px;text-align:center">
+    <div style="font-size:40px">🔒</div>
+    <p style="color:#94a3b8;font-size:13px;margin:14px 0">הזן סיסמה לכניסה להגדרות</p>
+    <input class="field" id="setPass" type="password" style="max-width:220px;margin:0 auto;text-align:center" inputmode="numeric"
+           onkeydown="if(event.key==='Enter')setUnlock()">
+    <div style="max-width:220px;margin:12px auto 0"><button class="btn" onclick="setUnlock()">כניסה</button></div>
+  </div>
 
-    <!-- DFT DEMAND TAB -->
-    <div class="content" id="tDft">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <h3 style="font-size:13px;color:var(--muted)">📋 DFT DEMAND</h3>
-            <div style="display:flex;gap:6px;align-items:center">
-                <span id="dftTime" style="font-size:10px;color:var(--dim)"></span>
-                <button onclick="clearDftPwa()" style="background:none;border:none;color:var(--red);font-size:11px;cursor:pointer">🗑️ נקה</button>
-            </div>
-        </div>
-        <div id="dftList" style="max-height:75vh;overflow-y:auto">
-            <div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">הנתונים מתעדכנים מהמחשב</div>
-        </div>
-    </div>
-
-    <!-- LOCATION TAB -->
-    <div class="content" id="tLoc">
-        <h3 style="font-size:13px;color:var(--muted);margin-bottom:12px">📍 חיפוש מיקום</h3>
-        <div class="inp">
-            <input type="text" id="locInput" placeholder="סרוק או הקלד מק״ט..." inputmode="text" autocomplete="off" onkeydown="if(event.key==='Enter')searchLocation(this.value)">
-            <button onclick="searchLocation(document.getElementById('locInput').value)">🔍</button>
-        </div>
-        <div id="locResult"></div>
+  <div id="setBody" style="display:none;padding-top:12px">
+    <div class="group">
+      <div class="group-title">👤 פרופיל</div>
+      <div id="avatarBox" style="cursor:pointer"></div>
+      <p class="hint" style="text-align:center" id="avatarHint">לחץ לבחירת תמונה</p>
+      <input type="file" id="avatarFile" accept="image/*" style="display:none">
     </div>
 
-    <!-- RECEIVE TAB -->
-    <div class="content" id="tRecv" style="overflow-y:auto">
-        <h3 style="font-size:13px;color:var(--muted);margin-bottom:12px">📥 קבלת סחורה</h3>
-        <div style="display:flex;gap:8px;direction:ltr;flex-wrap:wrap">
-            <input type="text" id="recvItem" placeholder="Item..." style="flex:2;min-width:120px;padding:12px;background:var(--card);border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-family:monospace" onkeydown="if(event.key==='Enter')document.getElementById('recvQty').focus()">
-            <input type="number" id="recvQty" placeholder="QTY" style="flex:1;min-width:60px;padding:12px;background:var(--card);border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:16px;text-align:center" onkeydown="if(event.key==='Enter')addToRecvList()">
-            <button onclick="addToRecvList()" style="padding:12px 20px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;white-space:nowrap">➕</button>
-        </div>
-        <div style="margin-top:12px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <h4 id="recvCount" style="font-size:12px;color:var(--dim)">📋 רשימה (0)</h4>
-                <button onclick="clearRecvList()" style="background:none;border:none;color:var(--red);font-size:11px;cursor:pointer">🗑️ נקה</button>
-            </div>
-            <div id="recvListEl" style="max-height:250px;overflow-y:auto"></div>
-            <button id="btnRecvSubmit" onclick="submitReceiveAll()" style="display:none;width:100%;margin-top:10px;padding:14px;background:var(--green);color:#000;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">📥 קבל ושלח לדאשבורד</button>
-        </div>
+    <div class="group">
+      <div class="group-title">📱 מכשיר</div>
+      <label class="lbl">שם מכשיר</label>
+      <input class="field" id="setDevice" placeholder="מסופון">
+      <p class="hint">השם שמופיע בדאשבורד המסופונים ובצ׳אט.</p>
     </div>
 
-    <!-- FAVORITES TAB -->
-    <div class="content" id="tFav">
-        <h3 style="font-size:13px;color:var(--muted);margin-bottom:12px">⭐ מועדפים</h3>
-        <div class="fav-list" id="favList"></div>
-        <div class="info" id="favEmpty">לחץ ⭐ ליד סריקה כדי להוסיף למועדפים</div>
+    <div class="group">
+      <div class="group-title">📷 סריקה</div>
+      <label class="lbl">משוב בסריקה</label>
+      <div class="opts" id="fbOpts"></div>
+      <p class="hint">לחיצה על אפשרות משמיעה/מרטיטה מיד לבדיקה.</p>
+      <label class="lbl">השהיה בין סריקות</label>
+      <div class="opts" id="delayOpts"></div>
+      <p class="hint">ההשהיה חלה בין כל שתי סריקות. "רציף" = בלי השהיה.</p>
+      <label class="lbl">מצלמה</label>
+      <div class="opts" id="camOpts"></div>
     </div>
 
-    <!-- SETTINGS TAB -->
-    <div class="content" id="tSet">
-        <div class="sgrp">
-            <h3>📷 סריקה</h3>
-            <div class="srow2"><label>רטט</label><div class="tgl on" id="tVib" onclick="this.classList.toggle('on');sset()"></div></div>
-            <div class="srow2"><label>צליל</label><div class="tgl on" id="tSnd" onclick="this.classList.toggle('on');sset()"></div></div>
-            <div class="srow2"><label>סריקה רציפה</label><div class="tgl" id="tCont" onclick="this.classList.toggle('on');sset()"></div></div>
-            <div class="srow2"><label>מצב אצווה</label><div class="tgl" id="tBatch" onclick="this.classList.toggle('on');sset();upBatch()"></div></div>
-            <div class="srow2"><label>קו לייזר</label><div class="tgl on" id="tLaser" onclick="this.classList.toggle('on');sset()"></div></div>
-        </div>
-        <div class="sgrp">
-            <h3>🎨 תצוגה</h3>
-            <div class="srow2"><label>מצב בהיר</label><div class="tgl" id="tLight" onclick="this.classList.toggle('on');document.body.classList.toggle('light');sset()"></div></div>
-            <div class="srow2">
-                <label>גודל טקסט</label>
-                <select id="sFontSize" onchange="document.documentElement.style.setProperty('--fs',this.value);sset()">
-                    <option value="12px">קטן</option>
-                    <option value="14px" selected>רגיל</option>
-                    <option value="16px">גדול</option>
-                    <option value="18px">גדול מאוד</option>
-                </select>
-            </div>
-        </div>
-        <div class="sgrp">
-            <h3>🔗 חיבור</h3>
-            <div class="srow2"><label>שם מכשיר</label><span id="sDevDisplay" style="font-size:12px;color:var(--blue)">—</span></div>
-            <div class="srow2"><label>שרת</label><span id="sConn" style="font-size:12px">—</span></div>
-            <div class="srow2"><label></label><button class="btn" style="width:auto;padding:8px 16px;font-size:12px" onclick="document.getElementById('app').classList.remove('on');document.getElementById('setup').style.display='block'">⚙️ שנה הגדרות</button></div>
-        </div>
-        <div class="info">📱 Woretaw Scanner v3.0<br>© Woretaw Project</div>
+    <div class="group">
+      <div class="group-title">🌐 חיבור</div>
+      <label class="lbl">כתובת n8n Webhook</label>
+      <input class="field" id="setN8n" dir="ltr" style="text-align:left" placeholder="https://n8n.woretaw.net/webhook">
+      <label class="lbl">קוד גישה</label>
+      <input class="field" id="setToken" type="password" dir="ltr" style="text-align:left" placeholder="הקוד שהוגדר בדאשבורד">
+      <p class="hint">נדרש לצ׳אט, לחיפוש מיקום ולרשימת המחוברים — הכל עובר דרך שרת המפעל.</p>
     </div>
+
+    <div class="group">
+      <div class="group-title">🖥️ שרת יעד</div>
+      <p class="hint" style="margin-top:0">כשכמה מחשבים מריצים שרת — בחר לאיזה מהם יגיעו הסריקות. <span id="srvRefresh" style="color:#3b82f6;cursor:pointer">🔄 רענן</span></p>
+      <div id="srvList" style="margin-top:8px"></div>
+    </div>
+
+    <p class="info" id="verInfo"></p>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab on" data-tab="scan"><span class="ico">📷</span><span class="txt">סריקה</span></button>
+  <button class="tab" data-tab="dft"><span class="ico">📋</span><span class="txt">DFT</span><span class="dotbadge" id="dftBadge" style="display:none">0</span></button>
+  <button class="tab" data-tab="loc"><span class="ico">📍</span><span class="txt">מיקום</span></button>
+  <button class="tab" data-tab="recv"><span class="ico">📥</span><span class="txt">קבלה</span><span class="dotbadge" id="recvBadge" style="display:none">0</span></button>
+  <button class="tab" data-tab="chat"><span class="ico">💬</span><span class="txt">צ׳אט</span><span class="dotbadge" id="chatBadge" style="display:none">0</span></button>
+  <button class="tab" data-tab="set"><span class="ico">⚙️</span><span class="txt">הגדרות</span></button>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
-// ===== STATE =====
-let C=JSON.parse(localStorage.getItem('wsc')||'{}');
-// Migration 2026-08-25: the old n8n cloud instance retired — move saved configs to n8n.woretaw.net
-if(C.url&&C.url.indexOf('app.n8n.cloud')!==-1){C.url='https://n8n.woretaw.net/webhook';localStorage.setItem('wsc',JSON.stringify(C));}
-if(!C.url){C.url='https://n8n.woretaw.net/webhook';}
-let S=JSON.parse(localStorage.getItem('wss')||'[]');
-let F=JSON.parse(localStorage.getItem('wsf')||'[]'); // favorites
-let batch=[];
-let sc=null,scanning=false,flash=false;
-const AC=new(window.AudioContext||window.webkitAudioContext)();
+var PWA_VERSION = '4.0.0';
+function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function $(id){ return document.getElementById(id); }
+var LS = {
+  get: function(k, d){ try { var v = localStorage.getItem(k); return v==null ? d : JSON.parse(v); } catch(e){ return d; } },
+  set: function(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
+};
 
-function beepOk(){const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);o.frequency.value=1200;o.type='sine';g.gain.value=.3;o.start();o.stop(AC.currentTime+.08)}
-function beepErr(){const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);o.frequency.value=400;o.type='square';g.gain.value=.2;o.start();o.stop(AC.currentTime+.2)}
-function vib(ms){if(navigator.vibrate&&gTgl('tVib'))navigator.vibrate(ms)}
-function gTgl(id){return document.getElementById(id)?.classList.contains('on')}
+var DEFAULTS = { n8nBase:'https://n8n.woretaw.net/webhook', device:'מסופון', scanDelay:2, feedback:'sound', avatar:null, camera:'environment', termToken:'', target:'' };
+var cfg = Object.assign({}, DEFAULTS, LS.get('wpwaCfg', {}));
+// migrate from the OLD standalone scanner if present
+(function(){ try {
+  var oldC = JSON.parse(localStorage.getItem('wsc')||'null');
+  if (oldC && !localStorage.getItem('wpwaCfg')) {
+    if (oldC.url && oldC.url.indexOf('app.n8n.cloud') === -1) cfg.n8nBase = oldC.url;
+    if (oldC.dev) cfg.device = oldC.dev;
+    saveCfg();
+  }
+} catch(e){} })();
+function saveCfg(){ LS.set('wpwaCfg', cfg); }
+function n8n(){ return (cfg.n8nBase || DEFAULTS.n8nBase).replace(/\/+$/, ''); }
 
-// ===== SPLASH =====
-setTimeout(()=>{
-    document.getElementById('splash').classList.add('hide');
-    setTimeout(()=>document.getElementById('splash').style.display='none',500);
-    if((C.url||C.off)&&C.dev){document.getElementById('app').classList.add('on')}
-    else{document.getElementById('setup').style.display='block'}
-},1200);
-
-// ===== TOAST =====
-let tt;function toast(t,c){const e=document.getElementById('toast');e.textContent=t;e.className='toast show '+(c||'');clearTimeout(tt);tt=setTimeout(()=>e.className='toast',2500)}
-
-// ===== SETUP =====
-function go(off){
-    var dev=document.getElementById('sDev').value.trim();
-    if(!dev){alert('חובה להכניס שם מכשיר!');document.getElementById('sDev').focus();return}
-    C.url=(document.getElementById('sUrl').value||'').trim().replace(/\/+$/,'');
-    C.dev=dev;
-    C.off=!!off;
-    localStorage.setItem('wsc',JSON.stringify(C));
-    document.getElementById('setup').style.display='none';
-    document.getElementById('app').classList.add('on');
-    chk();
+var toastTimer;
+function toast(text, kind){
+  var el = $('toast'); el.textContent = text;
+  el.className = 'toast show ' + (kind || '');
+  clearTimeout(toastTimer); toastTimer = setTimeout(function(){ el.className = 'toast'; }, 2500);
 }
 
-// ===== CONNECTION =====
-async function chk(){
-    const d=document.getElementById('dot'),t=document.getElementById('ct');
-    document.getElementById('sConn').textContent=C.url||'Offline';
-    if(!C.url||C.off){d.className='dot off';t.textContent='Offline';return false}
-    try{d.className='dot wait';t.textContent='...';
-        const r=await fetch(C.url+'/scanner-pending',{signal:AbortSignal.timeout(5000)});
-        if(r.ok){d.className='dot on';t.textContent='☁️ ✓';syncP();return true}
-    }catch(e){}
-    d.className='dot off';t.textContent='✗';return false
-}
-setInterval(chk,30000);
-
-// ===== TABS =====
-function stab(t){
-    document.querySelectorAll('.content').forEach(c=>c.classList.remove('on'));
-    document.querySelectorAll('.tab').forEach(c=>c.classList.remove('on'));
-    const map={scan:'tScan',hist:'tHist',dft:'tDft',loc:'tLoc',recv:'tRecv',fav:'tFav',set:'tSet'};
-    const idx=['scan','hist','dft','loc','recv','fav','set'].indexOf(t);
-    if(t==='dft') loadDft();
-    if(t==='set'){ var dd=document.getElementById('sDevDisplay'); if(dd)dd.textContent=C.dev||'—'; }
-    document.getElementById(map[t]).classList.add('on');
-    document.querySelectorAll('.tab')[idx].classList.add('on');
-    if(t==='hist')ren();if(t==='fav')renFav();
-}
-
-// ===== SCANNER =====
-function tScan(){scanning?stopS():startS()}
-function startS(){
-    if(AC.state==='suspended')AC.resume();
-    const cfg={fps:10,qrbox:{width:250,height:120},formatsToSupport:[0,2,3,4,6,7,12]};
-    sc=new Html5Qrcode('cam');
-    sc.start({facingMode:'environment'},cfg,onS,()=>{}).then(()=>{
-        scanning=true;
-        document.getElementById('bScan').textContent='⏹️ עצור';
-        document.getElementById('bScan').classList.add('on');
-        if(gTgl('tLaser'))document.getElementById('laser').classList.add('on');
-    }).catch(e=>toast('❌ '+e,'err'))
-}
-function stopS(){if(!sc)return;sc.stop().then(()=>{
-    scanning=false;
-    document.getElementById('bScan').textContent='📷 סרוק';
-    document.getElementById('bScan').classList.remove('on');
-    document.getElementById('laser').classList.remove('on');
-}).catch(()=>{})}
-
-let lc='',lt=0;
-function onS(c){if(c===lc&&Date.now()-lt<2500)return;lc=c;lt=Date.now();
-    if(gTgl('tSnd'))beepOk();vib([80]);scan(c);
-    if(!gTgl('tCont'))stopS()}
-
-function tFlash(){if(!sc||!scanning){toast('❌ הפעל סריקה קודם','err');return}
-    flash=!flash;document.getElementById('bFlash').classList.toggle('on',flash);
-    try{const track=sc.getRunningTrackCameraCapabilities?.()?.track||document.querySelector('#cam video')?.srcObject?.getVideoTracks()[0];
-        if(track)track.applyConstraints({advanced:[{torch:flash}]}).catch(()=>toast('❌ פנס לא נתמך','err'));
-        else toast('❌ פנס לא נתמך','err');
-    }catch(e){toast('❌ פנס לא נתמך','err')}}
-
-// Scan from gallery
-function scanFromImage(input){
-    if(!input.files||!input.files[0])return;
-    const file=input.files[0];
-    const html5QrCode=new Html5Qrcode('cam');
-    html5QrCode.scanFile(file,true).then(code=>{
-        toast('✅ '+code,'ok');if(gTgl('tSnd'))beepOk();vib([80]);scan(code);
-    }).catch(()=>toast('❌ לא זוהה ברקוד','err'));
-    input.value='';
-}
-
-// ===== SCAN LOGIC =====
-async function scan(c){
-    if(!c||!c.trim())return;c=c.trim();
-    // Batch mode
-    if(gTgl('tBatch')){batch.push(c);upBatch();toast(`📦 ${c} נוסף (${batch.length})`,'ok');return}
-
-    toast('✅ '+c,'ok');
-    const e={id:Date.now().toString(),code:c,time:new Date().toLocaleTimeString('he-IL'),date:new Date().toLocaleDateString('he-IL'),ts:new Date().toISOString(),dev:C.dev||'מסופון',ok:false,res:null};
-    S.unshift(e);if(S.length>500)S.pop();sav();ren();
-    if(C.url&&!C.off){
-        try{const r=await fetch(C.url+'/scanner-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({barcode:c,device:C.dev||'מסופון'}),signal:AbortSignal.timeout(10000)});
-            const d=await r.json();e.ok=true;if(d.item){e.res=d.item;showCard(d.item)}sav();ren();upb()
-        }catch(x){upb()}
-    }else upb()
-}
-
-function showCard(i){
-    if(!i){document.getElementById('rc').innerHTML='';return}
-    const q=i.qty??'?',n=parseFloat(q),sc=isNaN(n)?'':n>10?'grn':n>0?'ylw':'red';
-    document.getElementById('rc').innerHTML=`<div class="card">
-        <div class="num"><span>${i.item||'—'}</span><div class="actions">
-            <button onclick="shareScan('${i.item||''}','${i.description||''}')">📤</button>
-            <button onclick="navigator.clipboard?.writeText('${i.item||''}');toast('📋 הועתק!','ok')">📋</button>
-            <button onclick="toggleFav('${i.item||''}')">⭐</button>
-        </div></div>
-        <div class="desc">${i.description||'—'}</div>
-        <div class="grid">
-            <div class="box qb"><div class="l">מלאי</div><div class="v ${sc}">${q}</div></div>
-            <div class="box"><div class="l">מחסן</div><div class="v">${i.warehouse||'—'}</div></div>
-            <div class="box"><div class="l">LOT</div><div class="v">${i.lot||'—'}</div></div>
-        </div></div>`
-}
-
-// ===== BATCH =====
-function upBatch(){const bar=document.getElementById('batchBar');
-    bar.classList.toggle('on',gTgl('tBatch')&&batch.length>0);
-    document.getElementById('batchCount').textContent=batch.length}
-function clearBatch(){batch=[];upBatch()}
-async function sendBatch(){
-    if(!batch.length)return;
-    toast(`📤 שולח ${batch.length} פריטים...`);
-    for(const b of batch)await scan(b); // Will skip batch mode since we call directly
-    batch=[];upBatch();toast('✅ אצווה נשלחה','ok')
-}
-
-// ===== SHARE =====
-function shareScan(item,desc){
-    const text=`📦 ${item}\n${desc}`;
-    if(navigator.share){navigator.share({title:'Woretaw Scanner',text}).catch(()=>{})}
-    else{navigator.clipboard?.writeText(text);toast('📋 הועתק!')}
-}
-function shareHistory(){
-    const text=S.slice(0,20).map(s=>`${s.code} | ${s.res?.description||'—'} | ${s.time}`).join('\n');
-    if(navigator.share){navigator.share({title:'היסטוריית סריקות',text}).catch(()=>{})}
-    else{navigator.clipboard?.writeText(text);toast('📋 הועתק!')}
-}
-
-// ===== FAVORITES =====
-function toggleFav(code){
-    const idx=F.indexOf(code);
-    if(idx>=0){F.splice(idx,1);toast('⭐ הוסר מהמועדפים')}
-    else{F.push(code);toast('⭐ נוסף למועדפים!','ok')}
-    localStorage.setItem('wsf',JSON.stringify(F));ren();renFav()
-}
-function renFav(){
-    const el=document.getElementById('favList');
-    document.getElementById('favEmpty').style.display=F.length?'none':'block';
-    el.innerHTML=F.map(c=>`<div class="fav-item">
-        <div><div class="code">${c}</div></div>
-        <div><button onclick="scan('${c}')">🔍</button> <button onclick="toggleFav('${c}')">🗑️</button></div>
-    </div>`).join('')
-}
-
-// ===== SYNC =====
-async function syncP(){
-    if(!C.url||C.off)return;const pend=S.filter(s=>!s.ok);if(!pend.length)return;
-    let n=0;for(const s of pend){try{const r=await fetch(C.url+'/scanner-scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({barcode:s.code,device:s.dev}),signal:AbortSignal.timeout(5000)});if(r.ok){s.ok=true;n++}}catch(e){break}}
-    if(n){sav();ren();toast(`📡 ${n} סונכרנו`,'ok')}upb()
-}
-function upb(){const n=S.filter(s=>!s.ok).length;document.getElementById('pc').textContent=n;document.getElementById('pbar').classList.toggle('show',n>0)}
-
-// ===== HISTORY =====
-function sav(){localStorage.setItem('wss',JSON.stringify(S))}
-function ren(){
-    document.getElementById('ht').textContent=`📋 (${S.length})`;
-    const el=document.getElementById('sl');
-    const q=(document.getElementById('histSearch')?.value||'').toLowerCase();
-    let filtered=S;
-    if(q)filtered=S.filter(s=>s.code.toLowerCase().includes(q)||(s.res?.description||'').toLowerCase().includes(q));
-    if(!filtered.length){el.innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">'+(q?'לא נמצאו תוצאות':'סרוק ברקוד להתחלה')+'</div>';return}
-    // Group by date
-    let html='',lastDate='';
-    filtered.slice(0,100).forEach(s=>{
-        if(s.date!==lastDate){lastDate=s.date;html+=`<div class="date-group">${s.date}</div>`}
-        const isFav=F.includes(s.code);
-        html+=`<div class="srow" onclick="scan('${s.code}')"><div><div class="code">${s.code}</div><div class="dsc">${s.res?.description||s.res?.item||'—'}</div></div><div class="meta"><div class="tm">${s.time}</div><div class="ss ${s.ok?'synced':'pending'}">${s.ok?'✓':'⏳'}</div><span class="fav ${isFav?'':'off'}" onclick="event.stopPropagation();toggleFav('${s.code}')">${isFav?'⭐':'☆'}</span></div></div>`
+// ============ feedback ============
+var audioCtx = null;
+function beep(){
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    var t0 = audioCtx.currentTime;
+    [[2000,0],[2600,0.075]].forEach(function(p){
+      var osc = audioCtx.createOscillator(), g = audioCtx.createGain();
+      osc.type = 'sine'; osc.frequency.value = p[0];
+      g.gain.setValueAtTime(0.0001, t0+p[1]);
+      g.gain.exponentialRampToValueAtTime(0.5, t0+p[1]+0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+p[1]+0.072);
+      osc.connect(g); g.connect(audioCtx.destination);
+      osc.start(t0+p[1]); osc.stop(t0+p[1]+0.08);
     });
-    el.innerHTML=html
+  } catch(e){}
 }
-function clr(){S=[];sav();ren();document.getElementById('rc').innerHTML='';upb();toast('🗑️ נוקה')}
-
-// ===== SETTINGS =====
-function sset(){localStorage.setItem('wso',JSON.stringify({vib:gTgl('tVib'),snd:gTgl('tSnd'),cont:gTgl('tCont'),batch:gTgl('tBatch'),laser:gTgl('tLaser'),light:gTgl('tLight'),fs:document.getElementById('sFontSize').value}))}
-function lset(){const o=JSON.parse(localStorage.getItem('wso')||'{}');
-    if(o.vib===false)document.getElementById('tVib').classList.remove('on');
-    if(o.snd===false)document.getElementById('tSnd').classList.remove('on');
-    if(o.cont)document.getElementById('tCont').classList.add('on');
-    if(o.batch)document.getElementById('tBatch').classList.add('on');
-    if(o.laser===false)document.getElementById('tLaser').classList.remove('on');
-    if(o.light){document.getElementById('tLight').classList.add('on');document.body.classList.add('light')}
-    if(o.fs){document.getElementById('sFontSize').value=o.fs;document.documentElement.style.setProperty('--fs',o.fs)}
+function feedback(){
+  var fb = cfg.feedback || 'sound';
+  if (fb === 'sound' || fb === 'both') beep();
+  if ((fb === 'vibrate' || fb === 'both') && navigator.vibrate) navigator.vibrate(60);
 }
 
-// ===== INIT =====
-var _recvItems=JSON.parse(localStorage.getItem('wsrl')||'[]');
-try{lset();ren();renFav();upb();renderRecvList();console.log('All init OK')}catch(e){alert('INIT ERROR: '+e.message)}
-setTimeout(chk,1500);
-
-// ===== LOCATION SEARCH =====
-async function searchLocation(item){
-    if(!item||!item.trim())return;item=item.trim();
-    const el=document.getElementById('locResult');
-    el.innerHTML='<div style="text-align:center;color:var(--yellow);padding:20px">⏳ מחפש...</div>';
-    
-    // Try local server first, then n8n scan
-    try{
-        // Send as scan to get item info
-        if(C.url&&!C.off){
-            const controller=new AbortController();
-            const timer=setTimeout(()=>controller.abort(),10000);
-            const r=await fetch(C.url+'/scanner-scan',{
-                method:'POST',headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({barcode:item,device:C.dev||'מסופון'}),signal:controller.signal});
-            clearTimeout(timer);
-            const d=await r.json();
-            if(d.item){
-                el.innerHTML=`<div class="card" style="direction:ltr;text-align:left">
-                    <div class="num">${d.item.item||item}</div>
-                    <div class="desc">${d.item.description||'—'}</div>
-                    <div class="grid">
-                        <div class="box qb"><div class="l">Stock</div><div class="v ${d.item.qty>10?'grn':d.item.qty>0?'ylw':'red'}">${d.item.qty??'?'}</div></div>
-                        <div class="box"><div class="l">Warehouse</div><div class="v">${d.item.warehouse||'—'}</div></div>
-                        <div class="box"><div class="l">LOT</div><div class="v">${d.item.lot||'—'}</div></div>
-                    </div>
-                </div>`;
-                return;
-            }
-        }
-        // Search in cached DFT data
-        const match=dftData.find(r=>r.item===item||r.item.includes(item));
-        if(match){
-            el.innerHTML=`<div class="card" style="direction:ltr;text-align:left">
-                <div class="num">${match.item}</div>
-                <div class="desc">${match.description||'—'}</div>
-                <div class="grid">
-                    <div class="box"><div class="l">Locations</div><div class="v" style="color:var(--blue)">${match.locations||'—'}</div></div>
-                    <div class="box"><div class="l">MH</div><div class="v">${Math.round(match.mh)}</div></div>
-                    <div class="box"><div class="l">Shortage</div><div class="v red">${Math.round(match.surplusShortage)}</div></div>
-                </div>
-            </div>`;
-        } else el.innerHTML='<div style="text-align:center;color:var(--dim);padding:20px">❌ פריט לא נמצא</div>';
-    }catch(e){el.innerHTML='<div style="text-align:center;color:var(--red);padding:20px">❌ שגיאה</div>'}
+// ============ n8n transport ============
+function post(path, body){
+  return fetch(n8n() + path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+    .then(function(r){ setConn(true); return r.json(); })
+    .catch(function(e){ setConn(false); throw e; });
+}
+function setConn(ok){
+  $('hdrDot').className = 'dot' + (ok ? ' on' : '');
+  $('hdrStat').textContent = ok ? 'מחובר' : 'מנותק';
 }
 
-// ===== RECEIVE =====
-// _recvItems already declared above in init
-
-function addToRecvList(){
-    try{
-    var itemEl=document.getElementById('recvItem');
-    var qtyEl=document.getElementById('recvQty');
-    if(!itemEl||!qtyEl){alert('ERROR: elements not found');return}
-    var item=(itemEl.value||'').trim();
-    var qty=parseFloat(qtyEl.value)||0;
-    if(!item){toast('הכנס מק"ט','err');itemEl.focus();return}
-    if(!qty||qty<=0){toast('הכנס כמות','err');qtyEl.focus();return}
-    
-    const existing=_recvItems.find(function(r){return r.item===item});
-    if(existing){existing.qty+=qty}
-    else{_recvItems.push({item:item,qty:qty,ts:new Date().toISOString()})}
-    
-    localStorage.setItem('wsrl',JSON.stringify(_recvItems));
-    renderRecvList();
-    
-    itemEl.value='';
-    qtyEl.value='';
-    itemEl.focus();
-    
-    if(navigator.vibrate)navigator.vibrate(50);
-    beepOk();
-    toast('➕ '+item+' x'+qty,'ok');
-    }catch(e){alert('Error in addToRecvList: '+e.message)}
+// one poller for the reply queue — chat, roster and location share it
+var busListeners = [];
+function busAdd(fn){ busListeners.push(fn); return function(){ busListeners = busListeners.filter(function(x){ return x !== fn; }); }; }
+var busPolling = false;
+function busPoll(){
+  if (busPolling) return;
+  var token = (cfg.termToken || '').trim();
+  if (!token) return;
+  busPolling = true;
+  post('/woretaw-term-down', { token: token, device: cfg.device || 'מסופון' })
+    .then(function(d){
+      if (d && d.success && Array.isArray(d.items)) {
+        d.items.forEach(function(it){ busListeners.forEach(function(fn){ try { fn(it); } catch(e){} }); });
+      }
+    }).catch(function(){}).then(function(){ busPolling = false; });
+}
+setInterval(busPoll, 5000);
+function termUp(kind, text, to){
+  var token = (cfg.termToken || '').trim();
+  if (!token) { toast('חסר קוד גישה — הזן בהגדרות ← חיבור', 'err'); return Promise.reject(new Error('no token')); }
+  return post('/woretaw-term-up', { token: token, device: cfg.device || 'מסופון', kind: kind, text: text, to: to || '', target: cfg.target || '' });
 }
 
-function removeFromRecvList(itemCode){
-    _recvItems=_recvItems.filter(function(r){return r.item!==itemCode});
-    localStorage.setItem('wsrl',JSON.stringify(_recvItems));
-    renderRecvList();
+// ============ SCAN ============
+var history = LS.get('wpwaScans', []);
+var scanner = null, scanning = false, torch = false;
+var lastCode = '', lastTime = 0, cooldownTimer = null;
+
+function doScan(code){
+  code = String(code || '').trim().toUpperCase();
+  if (!code) return;
+  var delayMs = (isNaN(parseFloat(cfg.scanDelay)) ? 2 : Math.max(0, parseFloat(cfg.scanDelay))) * 1000;
+  var since = Date.now() - lastTime;
+  if (delayMs > 0 && since < delayMs) { if (code === lastCode) showCooldown(Math.ceil((delayMs - since)/1000)); return; }
+  if (delayMs === 0 && code === lastCode && since < 700) return;
+  lastCode = code; lastTime = Date.now();
+  if (delayMs > 0) startCooldown(delayMs);
+
+  feedback();
+  $('manual').value = code;
+  var entry = { id: String(Date.now()), code: code, time: new Date().toLocaleTimeString('he-IL'), synced: false };
+  history.unshift(entry); if (history.length > 500) history.pop();
+  LS.set('wpwaScans', history); renderHistory();
+
+  post('/scanner-scan', { barcode: code, device: cfg.device || 'מסופון', avatar: cfg.avatar || null, target: cfg.target || '' })
+    .then(function(d){ if (d && d.success) { entry.synced = true; LS.set('wpwaScans', history); renderHistory(); } })
+    .catch(function(){ toast('❌ אין חיבור — הסריקה תישאר בהיסטוריה', 'err'); });
 }
-
-function clearRecvList(){
-    _recvItems=[];localStorage.setItem('wsrl','[]');renderRecvList();toast('🗑️ נוקה');
+function showCooldown(sec){ var el = $('cooldown'); el.style.display=''; el.textContent = 'המתן ' + sec + ' שנ׳ לסריקה הבאה'; }
+function startCooldown(delayMs){
+  showCooldown(Math.ceil(delayMs/1000));
+  if (cooldownTimer) clearInterval(cooldownTimer);
+  cooldownTimer = setInterval(function(){
+    var left = delayMs - (Date.now() - lastTime);
+    if (left <= 0) { clearInterval(cooldownTimer); cooldownTimer = null; $('cooldown').style.display='none'; }
+    else showCooldown(Math.ceil(left/1000));
+  }, 250);
 }
-
-async function submitReceiveAll(){
-    if(!_recvItems.length){toast('הרשימה ריקה','err');return}
-    
-    toast('📤 שולח...','ok');
-    
-    if(C.url&&!C.off){
-        try{
-            var controller=new AbortController();
-            var timer=setTimeout(function(){controller.abort()},10000);
-            await fetch(C.url+'/scanner-scan',{
-                method:'POST',headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({barcode:'__RECEIVE__',device:C.dev||'מסופון',receiveList:_recvItems,timestamp:new Date().toISOString()}),
-                signal:controller.signal});
-            clearTimeout(timer);
-            if(navigator.vibrate)navigator.vibrate([100,50,100]);
-            toast('✅ '+_recvItems.length+' פריטים נשלחו!','ok');
-            _recvItems=[];localStorage.setItem('wsrl','[]');renderRecvList();
-        }catch(e){toast('❌ שליחה נכשלה','err')}
-    }else{toast('❌ לא מחובר','err')}
+function renderHistory(){
+  $('histTitle').textContent = '📋 היסטוריה (' + history.length + ')';
+  var el = $('histList');
+  if (!history.length) { el.innerHTML = '<div class="empty">סרוק ברקוד להתחלה</div>'; return; }
+  el.innerHTML = history.slice(0, 50).map(function(h){
+    return '<div class="row" data-code="' + esc(h.code) + '" onclick="doScan(this.dataset.code)">' +
+      '<div><div class="row-code">' + esc(h.code) + '</div></div>' +
+      '<div style="text-align:left"><div class="row-time">' + esc(h.time) + '</div>' +
+      '<div style="font-size:10px;color:' + (h.synced ? '#22c55e' : '#f59e0b') + '">' + (h.synced ? '✓' : '⏳') + '</div></div></div>';
+  }).join('');
 }
-
-function renderRecvList(){
-    var el=document.getElementById('recvListEl');
-    if(!el)return;
-    document.getElementById('recvCount').textContent='📋 רשימה ('+_recvItems.length+')';
-    document.getElementById('btnRecvSubmit').style.display=_recvItems.length?'block':'none';
-    if(!_recvItems.length){el.innerHTML='<div style="text-align:center;color:var(--dim);padding:20px;font-size:12px">סרוק פריטים להוספה</div>';return}
-    var html='';
-    for(var i=0;i<_recvItems.length;i++){
-        var r=_recvItems[i];
-        html+='<div class="srow" style="direction:ltr;text-align:left"><div><div class="code">'+r.item+'</div></div><div style="display:flex;align-items:center;gap:8px"><span style="color:var(--green);font-weight:800;font-size:16px">x'+r.qty+'</span><button onclick="removeFromRecvList(\''+r.item+'\')" style="background:none;border:none;color:var(--red);font-size:14px;cursor:pointer;padding:8px">✕</button></div></div>';
-    }
-    el.innerHTML=html
+function clearHistory(){
+  if (!history.length) return;
+  history = []; LS.set('wpwaScans', history); renderHistory(); $('scanResult').innerHTML=''; toast('🗑️ ההיסטוריה נוקתה');
 }
-
-// ===== DFT DEMAND =====
-let dftData=[];
-let dftOrders=JSON.parse(localStorage.getItem('wso2')||'{}'); // {item: clickCount}
-let dftSortKey='item', dftSortDir='asc';
-let touchStartX=0;
-
-async function loadDft(){
-    const el=document.getElementById('dftList');
-    // If cleared, don't load from cache
-    if(localStorage.getItem('wsd_cleared')==='1'){
-        el.innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">נוקה — הרץ סריקה מהדאשבורד</div>';
-        return;
-    }
-    const cached=JSON.parse(localStorage.getItem('wsd')||'null');
-    if(cached&&cached.data){dftData=cached.data;renderDft(cached.ts)}
-    
-    if(!C.url||C.off){
-        if(!cached) el.innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">לא מחובר — אין נתונים</div>';
-        return
-    }
-    
-    try{
-        el.innerHTML=cached?el.innerHTML:'<div style="text-align:center;color:var(--yellow);padding:30px">⏳ טוען...</div>';
-        const controller=new AbortController();
-        const timer=setTimeout(()=>controller.abort(),10000);
-        const r=await fetch(C.url+'/scanner-pending',{signal:controller.signal});
-        clearTimeout(timer);
-        const d=await r.json();
-        if(d.dftDemand&&d.dftDemand.data&&d.dftDemand.data.length){
-            dftData=d.dftDemand.data;
-            localStorage.removeItem('wsd_cleared');
-            localStorage.setItem('wsd',JSON.stringify({data:dftData,ts:d.dftDemand.timestamp,sort:{key:dftSortKey,dir:dftSortDir}}));
-            renderDft(d.dftDemand.timestamp);
-            return
-        }
-        if(!cached||!cached.data) el.innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">אין נתוני DFT — הרץ סריקה מהדאשבורד</div>';
-    }catch(e){
-        if(!cached) el.innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">אין נתוני DFT — הרץ סריקה מהדאשבורד</div>'
-    }
+$('btnScan').onclick = function(){ scanning ? stopCam() : startCam(); };
+$('btnTorch').onclick = function(){
+  if (!scanner || !scanning) return;
+  torch = !torch; $('btnTorch').classList.toggle('active', torch);
+  try { scanner.applyVideoConstraints({ advanced: [{ torch: torch }] }); } catch(e){}
+};
+function startCam(){
+  if (typeof Html5Qrcode === 'undefined') { toast('❌ ספריית הסריקה לא נטענה', 'err'); return; }
+  $('camWrap').classList.add('on');
+  scanner = new Html5Qrcode('reader');
+  var conf = { fps: 10, qrbox: { width: 250, height: 150 },
+    formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.DATA_MATRIX, Html5QrcodeSupportedFormats.ITF] };
+  scanner.start({ facingMode: cfg.camera || 'environment' }, conf, function(t){ doScan(t); }, function(){})
+    .then(function(){ scanning = true; $('btnScan').textContent = '⏹️ עצור'; $('btnScan').classList.add('active'); })
+    .catch(function(err){ $('camWrap').classList.remove('on'); toast('❌ מצלמה: ' + err, 'err'); });
 }
+function stopCam(){
+  if (!scanner) return;
+  scanner.stop().then(function(){
+    scanning = false; torch = false;
+    $('btnScan').textContent = '📷 סרוק'; $('btnScan').classList.remove('active');
+    $('btnTorch').classList.remove('active'); $('camWrap').classList.remove('on');
+  }).catch(function(){});
+}
+$('manual').addEventListener('keydown', function(e){ if (e.key === 'Enter') { doScan(e.target.value); e.target.select(); } });
 
+// ============ DFT ============
+var dftCache = LS.get('wpwaDft', { data: [], ts: '' });
+var dftData = dftCache.data || [], dftTs = dftCache.ts || '';
+var dftOrders = LS.get('wpwaDftOrders', {});
+var dftSortKey = 'item', dftSortDir = 'asc';
+var DFT_SORTS = [['Item','item'],['Desc','description'],['MH','mh'],['S/S','surplusShortage'],['Loc','locations']];
+
+function dftLoad(){
+  $('btnDftLoad').textContent = '⏳ טען';
+  fetch(n8n() + '/scanner-pending').then(function(r){ setConn(true); return r.json(); }).then(function(d){
+    if (d.dftDemand && d.dftDemand.data && d.dftDemand.data.length) {
+      dftData = d.dftDemand.data; dftTs = d.dftDemand.timestamp || '';
+      LS.set('wpwaDft', { data: dftData, ts: dftTs }); renderDft();
+    } else toast('אין נתוני DFT — הרץ סריקה מהדאשבורד');
+    if (d.servers || d.knownServers) { lastServers = d; renderServers(); }
+  }).catch(function(){ setConn(false); toast('❌ לא ניתן לטעון', 'err'); })
+    .then(function(){ $('btnDftLoad').textContent = '🔄 טען'; });
+}
 function dftTapItem(item){
-    if(!dftOrders[item]) dftOrders[item]=0;
-    dftOrders[item]++;
-    if(navigator.vibrate) navigator.vibrate(30);
-    localStorage.setItem('wso2',JSON.stringify(dftOrders));
-    renderDft();
+  dftOrders[item] = (dftOrders[item] || 0) + 1;
+  LS.set('wpwaDftOrders', dftOrders);
+  if (navigator.vibrate) navigator.vibrate(30);
+  renderDft();
+}
+function dftResetItem(item, ev){ if (ev) ev.preventDefault(); delete dftOrders[item]; LS.set('wpwaDftOrders', dftOrders); renderDft(); }
+function dftFinish(){
+  var orders = Object.keys(dftOrders).filter(function(k){ return dftOrders[k] > 0; }).map(function(k){
+    var r = dftData.filter(function(x){ return x.item === k; })[0] || {};
+    return { item: k, qty: dftOrders[k], description: r.description || '', mh: Math.round(r.mh || 0),
+             surplusShortage: Math.round(r.surplusShortage || 0), locations: r.locations || '' };
+  });
+  if (!orders.length) { toast('אין הזמנות'); return; }
+  post('/scanner-scan', { barcode: '__DFT_ORDERS__', device: cfg.device || 'מסופון', target: cfg.target || '', orders: orders, timestamp: new Date().toISOString() })
+    .then(function(){ toast('✅ ' + orders.length + ' הזמנות נשלחו!', 'ok'); feedback();
+      dftOrders = {}; LS.set('wpwaDftOrders', dftOrders); renderDft(); })
+    .catch(function(){ toast('❌ שליחה נכשלה', 'err'); });
+}
+function dftClearAll(){
+  dftData = []; dftTs = ''; dftOrders = {};
+  LS.set('wpwaDft', { data: [], ts: '' }); LS.set('wpwaDftOrders', {}); renderDft();
+}
+function dftSort(k){
+  if (dftSortKey === k) dftSortDir = dftSortDir === 'asc' ? 'desc' : 'asc';
+  else { dftSortKey = k; dftSortDir = 'asc'; }
+  renderDft();
+}
+function renderDft(){
+  $('dftTs').textContent = dftTs ? new Date(dftTs).toLocaleString('he-IL') : '';
+  $('dftSorts').innerHTML = DFT_SORTS.map(function(p){
+    return '<button class="sort-btn ' + (dftSortKey === p[1] ? 'on' : '') + '" onclick="dftSort(\'' + p[1] + '\')">' +
+      p[0] + (dftSortKey === p[1] ? (dftSortDir === 'asc' ? ' ▲' : ' ▼') : '') + '</button>';
+  }).join('');
+  var total = Object.keys(dftOrders).reduce(function(a,k){ return a + dftOrders[k]; }, 0);
+  var fin = $('btnDftFinish');
+  fin.style.display = total ? '' : 'none';
+  fin.textContent = '✅ Finish (' + total + ')';
+  var badge = $('dftBadge');
+  badge.style.display = total ? '' : 'none'; badge.textContent = total;
+  var el = $('dftList');
+  if (!dftData.length) { el.innerHTML = '<div class="empty">לחץ "טען" או הרץ סריקה מהדאשבורד</div>'; return; }
+  var sorted = dftData.slice().sort(function(a, b){
+    var va = a[dftSortKey] != null ? a[dftSortKey] : '', vb = b[dftSortKey] != null ? b[dftSortKey] : '';
+    if (typeof va === 'number' && typeof vb === 'number') return dftSortDir === 'asc' ? va - vb : vb - va;
+    return dftSortDir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+  });
+  el.innerHTML = sorted.map(function(r){
+    var q = dftOrders[r.item] || 0;
+    return '<div class="row dft-row ' + (q ? 'ordered' : '') + '" data-item="' + esc(r.item) + '" ' +
+      'onclick="dftTapItem(this.dataset.item)" oncontextmenu="dftResetItem(this.dataset.item, event)">' +
+      (q ? '<div class="badge">' + q + '</div>' : '') +
+      '<div style="flex:1">' +
+        '<div class="dft-line"><span class="row-code">' + esc(r.item) + '</span>' +
+          '<span class="dft-loc">' + esc(r.locations || '') + '</span></div>' +
+        '<div class="row-desc">' + esc(r.description || '') + '</div>' +
+        '<div class="dft-line" style="margin-top:4px"><span class="dft-mh">MH: ' + Math.round(r.mh || 0) + '</span>' +
+          '<span class="dft-ss">' + Math.round(r.surplusShortage || 0) + '</span></div>' +
+      '</div></div>';
+  }).join('');
 }
 
-function dftSwipeReset(item){
-    delete dftOrders[item];
-    localStorage.setItem('wso2',JSON.stringify(dftOrders));
-    toast('↩️ '+item+' אופס','');
-    renderDft();
-}
-
-function dftSortBy(key){
-    if(dftSortKey===key) dftSortDir=dftSortDir==='asc'?'desc':'asc';
-    else{dftSortKey=key;dftSortDir='asc'}
-    // Save sort preference
-    const cached=JSON.parse(localStorage.getItem('wsd')||'{}');
-    cached.sort={key:dftSortKey,dir:dftSortDir};
-    localStorage.setItem('wsd',JSON.stringify(cached));
-    renderDft();
-}
-
-function renderDft(ts){
-    // Restore sort from cache
-    const cached=JSON.parse(localStorage.getItem('wsd')||'{}');
-    if(cached.sort){dftSortKey=cached.sort.key;dftSortDir=cached.sort.dir}
-    
-    document.getElementById('dftTime').textContent=ts?new Date(ts).toLocaleString('he-IL'):'';
-    const el=document.getElementById('dftList');
-    if(!dftData.length){el.innerHTML='<div style="text-align:center;color:var(--green);padding:30px">✅ אין חוסרים!</div>';return}
-    
-    // Sort
-    const sorted=[...dftData].sort((a,b)=>{
-        let va=a[dftSortKey]??'',vb=b[dftSortKey]??'';
-        if(typeof va==='number'&&typeof vb==='number') return dftSortDir==='asc'?va-vb:vb-va;
-        return dftSortDir==='asc'?String(va).localeCompare(String(vb)):String(vb).localeCompare(String(va))
+// ============ LOCATION (DFT first, plant server through the queue otherwise) ============
+var locWaiter = null;
+function locSearch(q){
+  var item = String(q || '').trim().toUpperCase();
+  if (!item) return;
+  var exact = dftData.filter(function(r){ return String(r.item||'').trim().toUpperCase() === item; });
+  var partial = exact.length ? [] : dftData.filter(function(r){ return String(r.item||'').trim().toUpperCase().indexOf(item) >= 0; });
+  var list = exact.length ? exact : partial;
+  if (list.length === 1) { locShowLocal(list[0]); return; }
+  if (list.length > 1) {
+    $('locResult').innerHTML = '<div style="padding:12px"><p style="color:#94a3b8;font-size:12px;margin-bottom:8px">נמצאו ' +
+      list.length + ' פריטים — בחר:</p>' + list.slice(0, 30).map(function(r){
+        return '<div class="row" style="margin:0 0 8px" data-item="' + esc(r.item) + '" onclick="locPick(this.dataset.item)">' +
+          '<div style="flex:1"><div class="row-code">' + esc(r.item) + '</div>' +
+          '<div class="row-desc">' + esc(r.description || '') + '</div>' +
+          '<div style="color:#22c55e;font-size:13px;margin-top:4px">' + esc(r.locations || 'ללא מיקום') + '</div></div></div>';
+      }).join('') + '</div>';
+    return;
+  }
+  $('locResult').innerHTML = '<div class="empty">⏳ מחפש בשרת המפעל…</div>';
+  termUp('command', 'loc ' + item).then(function(){
+    if (locWaiter) locWaiter.off();
+    var done = false;
+    var off = busAdd(function(it){
+      if (done || !it || it.kind === 'chat') return;
+      var tx = String(it.text || '');
+      if (tx.indexOf('##') === 0 || tx.indexOf('מחוברים כרגע') === 0) return;
+      done = true; off(); locWaiter = null;
+      locCard(item, '', tx, 'משרת המפעל');
     });
-    
-    const arrow=(k)=>dftSortKey===k?(dftSortDir==='asc'?' ▲':' ▼'):'';
-    const totalOrders=Object.values(dftOrders).reduce((s,v)=>s+v,0);
-    
-    el.innerHTML=`
-        <div style="direction:ltr;display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
-            ${['item','description','mh','surplusShortage','locations'].map(k=>
-                `<button onclick="dftSortBy('${k}')" style="padding:4px 8px;background:${dftSortKey===k?'var(--blue)':'var(--card)'};color:${dftSortKey===k?'#fff':'var(--muted)'};border:1px solid var(--border);border-radius:6px;font-size:10px;cursor:pointer">${{item:'Item',description:'Desc',mh:'MH',surplusShortage:'S/S',locations:'Loc'}[k]}${arrow(k)}</button>`
-            ).join('')}
-            ${totalOrders?`<button onclick="dftFinish()" style="padding:6px 14px;background:var(--green);color:#000;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">✅ Finish (${totalOrders})</button>`:''}
-        </div>
-        ${sorted.map(r=>{
-            const qty=dftOrders[r.item]||0;
-            return `<div class="srow" style="flex-direction:column;align-items:stretch;position:relative;border-right:${qty?'3px solid var(--yellow)':'none'}"
-                onclick="dftTapItem('${r.item}')"
-                ontouchstart="touchStartX=event.touches[0].clientX"
-                ontouchend="if(touchStartX-event.changedTouches[0].clientX>80)dftSwipeReset('${r.item}')">
-                ${qty?`<div style="position:absolute;top:4px;left:4px;background:var(--yellow);color:#000;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800">${qty}</div>`:''}
-                <div style="display:flex;justify-content:space-between;direction:ltr"><span class="code">${r.item}</span><span style="color:var(--blue);font-weight:700;font-size:14px">${r.locations}</span></div>
-                <div class="dsc" style="direction:ltr;text-align:left">${r.description}</div>
-                <div style="display:flex;justify-content:space-between;margin-top:4px;direction:ltr"><span style="font-size:10px;color:var(--dim)">MH: ${Math.round(r.mh)}</span><span style="color:var(--red);font-weight:700;font-size:12px">${Math.round(r.surplusShortage)}</span></div>
-            </div>`
-        }).join('')}`;
+    locWaiter = { off: off };
+    setTimeout(function(){ if (!done) { done = true; off(); locWaiter = null;
+      $('locResult').innerHTML = '<div class="empty">❌ אין מענה מהשרת (60 שנ׳).<br>בדוק שהגשר פעיל בדאשבורד.</div>'; } }, 60000);
+  }).catch(function(){ $('locResult').innerHTML = '<div class="empty">❌ הבקשה לא נשלחה</div>'; });
+}
+function locPick(item){ var r = dftData.filter(function(x){ return x.item === item; })[0]; if (r) locShowLocal(r); }
+function locShowLocal(r){
+  var lines = [];
+  lines.push(r.locations ? 'מיקום: ' + r.locations : 'אין מיקום רשום לפריט זה');
+  lines.push(''); lines.push('MH: ' + Math.round(r.mh || 0));
+  lines.push('חוסר/עודף: ' + Math.round(r.surplusShortage || 0));
+  locCard(r.item, r.description, lines.join('\n'),
+    'מתוך נתוני DFT בטלפון' + (dftTs ? ' · עודכן ' + new Date(dftTs).toLocaleString('he-IL') : ''));
+}
+function locCard(item, desc, body, src){
+  $('locResult').innerHTML = '<div class="card"><div class="card-num">' + esc(item) + '</div>' +
+    (desc ? '<div class="card-desc" style="margin-top:6px">' + esc(desc) + '</div>' : '') +
+    '<pre class="answer">' + esc(body) + '</pre>' +
+    '<div style="color:#64748b;font-size:10px;margin-top:10px">' + esc(src) + '</div></div>';
+}
+$('locQuery').addEventListener('keydown', function(e){ if (e.key === 'Enter') locSearch(e.target.value); });
+
+// ============ RECEIVE ============
+var recvList = LS.get('wpwaRecv', []);
+function recvAdd(){
+  var item = $('recvItem').value.trim().toUpperCase();
+  var qty = parseFloat($('recvQty').value) || 0;
+  if (!item) { toast('הכנס מק"ט'); return; }
+  if (qty <= 0) { toast('הכנס כמות'); return; }
+  var found = recvList.filter(function(r){ return r.item === item; })[0];
+  if (found) found.qty += qty;
+  else recvList.unshift({ item: item, qty: qty, ts: new Date().toISOString() });
+  LS.set('wpwaRecv', recvList);
+  $('recvItem').value = ''; $('recvQty').value = '';
+  if (navigator.vibrate) navigator.vibrate(30);
+  renderRecv(); $('recvItem').focus();
+}
+function recvRemove(item){ recvList = recvList.filter(function(r){ return r.item !== item; }); LS.set('wpwaRecv', recvList); renderRecv(); }
+function recvClear(){ if (!recvList.length) return; if (!confirm('למחוק הכל?')) return; recvList = []; LS.set('wpwaRecv', recvList); renderRecv(); }
+function recvSubmit(){
+  if (!recvList.length) { toast('הרשימה ריקה'); return; }
+  post('/scanner-scan', { barcode: '__RECEIVE__', device: cfg.device || 'מסופון', target: cfg.target || '', receiveList: recvList, timestamp: new Date().toISOString() })
+    .then(function(){ toast('✅ ' + recvList.length + ' פריטים נשלחו!', 'ok'); feedback();
+      recvList = []; LS.set('wpwaRecv', recvList); renderRecv(); })
+    .catch(function(){ toast('❌ שליחה נכשלה', 'err'); });
+}
+function renderRecv(){
+  $('recvTitle').textContent = '📋 רשימה (' + recvList.length + ')';
+  var badge = $('recvBadge');
+  badge.style.display = recvList.length ? '' : 'none'; badge.textContent = recvList.length;
+  $('recvList').innerHTML = recvList.length
+    ? recvList.map(function(r){ return '<div class="row" style="cursor:default">' +
+        '<button class="link-danger" data-item="' + esc(r.item) + '" onclick="recvRemove(this.dataset.item)">✕</button>' +
+        '<span style="color:#22c55e;font-weight:800;font-size:16px">x' + esc(r.qty) + '</span>' +
+        '<span class="row-code">' + esc(r.item) + '</span></div>'; }).join('')
+    : '<div class="empty">הוסף פריטים לרשימה</div>';
+  $('recvSubmitWrap').innerHTML = recvList.length
+    ? '<button class="btn" style="background:#22c55e;color:#000" onclick="recvSubmit()">📥 קבל ושלח לדאשבורד (' + recvList.length + ')</button>'
+    : '';
+}
+$('recvItem').addEventListener('keydown', function(e){ if (e.key === 'Enter') $('recvQty').focus(); });
+$('recvQty').addEventListener('keydown', function(e){ if (e.key === 'Enter') recvAdd(); });
+
+// ============ CHAT (through the plant server via the term queue) ============
+var chatMsgs = LS.get('wpwaChat', []);
+var chatUnread = 0, lastPullId = 0, chatTarget = null;
+var onlineUsers = [], usersExpanded = false;
+
+function chatKey(m){ return String(m.id || (m.timestamp + '|' + m.text)); }
+function chatAdd(m, notify){
+  if (!m || !m.text) return;
+  if (chatMsgs.some(function(x){ return chatKey(x) === chatKey(m); })) return;
+  chatMsgs.push({ id: m.id, from: m.from, to: m.to || null, fromName: m.fromName || 'משתמש', text: m.text,
+                  priv: !!m.priv, isTerminal: !!m.isTerminal, mine: !!m.mine,
+                  timestamp: m.timestamp || new Date().toISOString() });
+  if (chatMsgs.length > 300) chatMsgs = chatMsgs.slice(-300);
+  LS.set('wpwaChat', chatMsgs);
+  var mine = m.mine || String(m.fromName || '') === (cfg.device || 'מסופון');
+  if (notify && !mine) {
+    beep();
+    if (navigator.vibrate) navigator.vibrate(40);
+    if (!$('scChat').classList.contains('on')) { chatUnread++; renderChatBadge(); }
+  }
+  renderChat();
+}
+function renderChatBadge(){ var b = $('chatBadge'); b.style.display = chatUnread ? '' : 'none'; b.textContent = chatUnread; }
+
+function chatPull(){
+  var token = (cfg.termToken || '').trim();
+  if (!token) return;
+  termUp('command', 'chatpull ' + lastPullId).catch(function(){});
+}
+setInterval(function(){ if ($('scChat').classList.contains('on')) chatPull(); }, 10000);
+
+function usersPull(){
+  termUp('command', 'users').catch(function(){});
 }
 
-function clearDftPwa(){
-    dftData=[];dftOrders={};
-    localStorage.removeItem('wsd');localStorage.setItem('wso2','{}');
-    localStorage.setItem('wsd_cleared','1');
-    document.getElementById('dftList').innerHTML='<div style="text-align:center;color:var(--dim);padding:30px;font-size:12px">נוקה — הרץ סריקה מהדאשבורד</div>';
-    document.getElementById('dftTime').textContent='';
-    toast('🗑️ DFT נוקה');
+busAdd(function(it){
+  if (!it || !it.text) return;
+  var t = String(it.text);
+  if (it.kind === 'chat') {
+    var isPriv = t.indexOf('[פרטי] ') === 0;
+    var raw = isPriv ? t.slice(8) : t;
+    var sep = raw.indexOf(': ');
+    chatAdd({ id: it.chatId || (it.ts + '|' + t), fromName: sep > 0 ? raw.slice(0, sep) : 'משתמש',
+              text: sep > 0 ? raw.slice(sep + 2) : raw, priv: isPriv,
+              timestamp: new Date(it.ts || Date.now()).toISOString() }, true);
+    return;
+  }
+  if (t.indexOf('##CHAT##') === 0) {
+    try {
+      var d = JSON.parse(t.slice(8));
+      var first = lastPullId === 0;
+      (d.msgs || []).forEach(function(m){
+        chatAdd({ id: m.id, from: m.from, to: m.to || null, fromName: m.fromName, text: m.text, priv: !!m.priv,
+                  isTerminal: String(m.from || '').indexOf('TERM:') === 0, timestamp: m.ts }, !first);
+      });
+      var n = Number(d.last);
+      if (!isNaN(n) && n > lastPullId) lastPullId = n;
+    } catch(e){}
+    return;
+  }
+  if (t.indexOf('מחוברים כרגע') === 0) {
+    var marker = t.indexOf('##USERS##');
+    if (marker >= 0) {
+      try {
+        onlineUsers = JSON.parse(t.slice(marker + 9)).map(function(u){
+          return { odbc: u.id, name: u.name, isTerminal: !!u.terminal, remote: !!u.remote, computer: u.computer };
+        });
+        renderChatUsers();
+      } catch(e){}
+    }
+  }
+});
+
+function renderChatUsers(){
+  var el = $('chatUsers');
+  var me = cfg.device || 'מסופון';
+  var others = onlineUsers.filter(function(u){ return u.name !== me; });
+  var head = chatTarget
+    ? '<span style="color:#a78bfa">✉ הודעה פרטית ל־' + esc(chatTarget.name) + '</span>'
+    : '<span style="color:#22c55e">●</span> ' + others.length + ' מחוברים';
+  if (!usersExpanded) {
+    el.innerHTML = head + ' <span style="color:#475569">(' + (chatTarget ? 'שנה' : 'בחר נמען') + ')</span>';
+    return;
+  }
+  function row(label, sub, active, handler){
+    return '<div onclick="' + handler + '" style="padding:5px 6px;margin:2px 0;border-radius:6px;cursor:pointer;' +
+      (active ? 'background:#1d4ed8;color:#fff' : 'background:#0f172a;color:#cbd5e1') + '">' +
+      esc(label) + (sub ? ' <span style="color:' + (active ? '#dbeafe' : '#475569') + '">— ' + esc(sub) + '</span>' : '') + '</div>';
+  }
+  el.innerHTML = '<div style="margin-bottom:4px">' + head + ' <span style="color:#475569">(סגור)</span></div>' +
+    row('לכולם (צ׳אט קבוצתי)', '', !chatTarget, "chatPick('')") +
+    others.map(function(u){ return row(u.name,
+      u.isTerminal ? (u.remote ? 'מסופון מרוחק' : 'מסופון') : (u.computer || 'מחשב'),
+      chatTarget && chatTarget.odbc === u.odbc,
+      "chatPick('" + String(u.odbc).replace(/'/g, "\\'") + "')"); }).join('') +
+    (others.length ? '' : '<div style="color:#475569;padding:4px">לחץ רענן או המתן — הרשימה נטענת מהשרת</div>');
+}
+function chatPick(odbc){
+  if (!odbc) chatTarget = null;
+  else {
+    var u = onlineUsers.filter(function(x){ return String(x.odbc) === String(odbc); })[0];
+    chatTarget = u ? { odbc: u.odbc, name: u.name } : null;
+  }
+  usersExpanded = false;
+  $('chatInput').placeholder = chatTarget ? ('הודעה פרטית ל־' + chatTarget.name + '…') : 'הודעה לכולם…';
+  renderChatUsers(); renderChat(); $('chatInput').focus();
+}
+$('chatUsers').addEventListener('click', function(e){
+  if (e.target.closest('[onclick]') && e.target !== $('chatUsers')) return;
+  usersExpanded = !usersExpanded;
+  if (usersExpanded) usersPull();
+  renderChatUsers();
+});
+
+function renderChat(){
+  var el = $('chatList');
+  var shown = chatMsgs.filter(function(m){ return chatTarget
+    ? (m.priv && (String(m.from) === String(chatTarget.odbc) || String(m.to) === String(chatTarget.odbc) || m.mine))
+    : !m.priv; });
+  if (!shown.length) { el.innerHTML = '<div class="empty">' + (chatTarget ? 'אין עדיין הודעות עם ' + esc(chatTarget.name) : 'אין הודעות עדיין — כתוב משהו לצוות') + '</div>'; return; }
+  var me = cfg.device || 'מסופון';
+  el.innerHTML = shown.slice(-100).map(function(m){
+    var mine = m.mine || String(m.fromName || '') === me;
+    var t = new Date(m.timestamp);
+    return '<div style="display:flex;gap:8px;margin-bottom:10px;' + (mine ? 'flex-direction:row-reverse' : '') + '">' +
+      '<div style="width:28px;height:28px;border-radius:50%;background:#334155;color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">' +
+      esc(String(m.fromName || '?').trim().charAt(0)) + '</div>' +
+      '<div style="max-width:78%;background:' + (mine ? '#1d4ed8' : '#1e293b') + ';border:1px solid ' + (mine ? '#2563eb' : '#334155') +
+      ';border-radius:12px;padding:8px 10px">' +
+        '<div style="font-size:10px;color:' + (mine ? '#bfdbfe' : '#64748b') + ';margin-bottom:2px">' + esc(m.fromName) +
+        (m.isTerminal ? ' · מסופון' : '') + (m.priv ? ' · פרטי' : '') + '</div>' +
+        '<div style="font-size:13px;line-height:1.5;white-space:pre-wrap">' + esc(m.text) + '</div>' +
+        '<div style="font-size:9px;color:' + (mine ? '#93c5fd' : '#475569') + ';margin-top:3px;text-align:left">' +
+          (isNaN(t) ? '' : t.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' })) + '</div>' +
+      '</div></div>';
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+function chatSend(){
+  var input = $('chatInput');
+  var text = input.value.trim();
+  if (!text) return;
+  beep();
+  chatAdd({ id: 'local-' + Date.now(), fromName: cfg.device || 'מסופון', text: text, mine: true,
+            priv: !!chatTarget, to: chatTarget ? chatTarget.odbc : null }, false);
+  termUp('chat', text, chatTarget ? chatTarget.odbc : '')
+    .then(function(d){ if (!d.success) toast('❌ ההודעה לא נשלחה', 'err'); })
+    .catch(function(){ toast('❌ ההודעה לא נשלחה', 'err'); });
+  input.value = '';
+}
+$('chatInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') chatSend(); });
+
+// ============ SETTINGS ============
+var SETTINGS_PASSWORD = '12622';
+function setUnlock(){
+  if ($('setPass').value.trim() === SETTINGS_PASSWORD) {
+    $('setLock').style.display = 'none'; $('setBody').style.display = '';
+    $('setPass').value = ''; renderSettings(); refreshServers();
+  } else { toast('❌ סיסמה שגויה', 'err'); $('setPass').value = ''; }
+}
+var FB_OPTS = [['sound','🔊 צליל'],['vibrate','📳 רטט'],['both','🔊📳 צליל ורטט'],['silent','🔇 שקט']];
+var DELAY_OPTS = [[0,'רציף'],[1,'1 שנ׳'],[2,'2 שנ׳'],[3,'3 שנ׳'],[5,'5 שנ׳'],[10,'10 שנ׳']];
+var CAM_OPTS = [['environment','אחורית'],['user','קדמית']];
+var lastServers = null;
+
+function renderSettings(){
+  $('avatarBox').innerHTML = cfg.avatar
+    ? '<img src="' + esc(cfg.avatar) + '" class="avatar-big" alt="">'
+    : '<div class="avatar-ph">👤</div>';
+  $('avatarHint').textContent = cfg.avatar ? 'לחץ להחלפה · לחיצה ארוכה להסרה' : 'לחץ לבחירת תמונה';
+  $('setDevice').value = cfg.device || '';
+  $('setN8n').value = cfg.n8nBase || DEFAULTS.n8nBase;
+  $('setToken').value = cfg.termToken || '';
+  $('fbOpts').innerHTML = FB_OPTS.map(function(p){
+    return '<div class="opt ' + ((cfg.feedback || 'sound') === p[0] ? 'on' : '') + '" onclick="pickFeedback(\'' + p[0] + '\')">' + p[1] + '</div>'; }).join('');
+  var cur = isNaN(parseFloat(cfg.scanDelay)) ? 2 : parseFloat(cfg.scanDelay);
+  $('delayOpts').innerHTML = DELAY_OPTS.map(function(p){
+    return '<div class="opt ' + (cur === p[0] ? 'on' : '') + '" onclick="pickDelay(' + p[0] + ')">' + p[1] + '</div>'; }).join('');
+  $('camOpts').innerHTML = CAM_OPTS.map(function(p){
+    return '<div class="opt ' + ((cfg.camera || 'environment') === p[0] ? 'on' : '') + '" onclick="pickCam(\'' + p[0] + '\')">' + p[1] + '</div>'; }).join('');
+  $('verInfo').innerHTML = '📱 Woretaw Scanner PWA v' + PWA_VERSION + '<br>© Woretaw Project';
+  renderServers();
+}
+function pickFeedback(v){ cfg.feedback = v; saveCfg(); renderSettings(); if (v === 'sound' || v === 'both') beep(); if ((v === 'vibrate' || v === 'both') && navigator.vibrate) navigator.vibrate(60); }
+function pickDelay(v){ cfg.scanDelay = v; saveCfg(); renderSettings(); }
+function pickCam(v){ cfg.camera = v; saveCfg(); renderSettings(); if (scanning) { stopCam(); setTimeout(startCam, 400); } }
+$('setDevice').addEventListener('change', function(e){ cfg.device = e.target.value.trim() || 'מסופון'; saveCfg(); toast('נשמר'); });
+$('setN8n').addEventListener('change', function(e){ cfg.n8nBase = e.target.value.trim().replace(/\/+$/, '') || DEFAULTS.n8nBase; saveCfg(); toast('נשמר'); });
+$('setToken').addEventListener('change', function(e){ cfg.termToken = e.target.value.trim(); saveCfg(); toast('נשמר'); });
+
+function refreshServers(){
+  fetch(n8n() + '/scanner-pending').then(function(r){ return r.json(); })
+    .then(function(d){ lastServers = d; renderServers(); }).catch(function(){});
+}
+$('srvRefresh').addEventListener('click', refreshServers);
+function renderServers(){
+  var el = $('srvList'); if (!el) return;
+  var live = (lastServers && lastServers.servers) || {};
+  var known = (lastServers && lastServers.knownServers) || {};
+  var names = Object.keys(known);
+  Object.keys(live).forEach(function(n){ if (names.indexOf(n) < 0) names.push(n); });
+  function srvBtn(name, sub, on, handler){
+    return '<button class="srv ' + (on ? 'on' : '') + '" onclick="' + handler + '">' + esc(name) +
+      '<small>' + esc(sub) + '</small></button>';
+  }
+  var htmlOut = srvBtn('כל השרתים', 'הסריקה תופיע בכל הדאשבורדים', !cfg.target, "pickServer('')");
+  names.sort().forEach(function(n){
+    var sub = live[n] ? '● גשר פעיל — מקבל עכשיו' : (known[n] && known[n].online ? '○ השרת פועל, אין גשר — ימתין בתור' : '○ אין גשר פעיל');
+    htmlOut += srvBtn(n, sub, String(cfg.target || '').toUpperCase() === n, "pickServer('" + esc(n) + "')");
+  });
+  el.innerHTML = htmlOut;
+}
+function pickServer(name){ cfg.target = name; saveCfg(); renderServers(); toast(name ? 'שרת יעד: ' + name : 'כל השרתים'); }
+
+// avatar — resized to 128px like the app
+var avatarPressTimer = null;
+$('avatarBox').addEventListener('click', function(){ $('avatarFile').click(); });
+$('avatarBox').addEventListener('contextmenu', function(e){ e.preventDefault(); removeAvatar(); });
+$('avatarBox').addEventListener('touchstart', function(){ avatarPressTimer = setTimeout(removeAvatar, 700); });
+$('avatarBox').addEventListener('touchend', function(){ clearTimeout(avatarPressTimer); });
+function removeAvatar(){
+  if (!cfg.avatar) return;
+  if (!confirm('להסיר את תמונת הפרופיל?')) return;
+  cfg.avatar = null; saveCfg(); renderSettings(); applyAvatar();
+}
+$('avatarFile').addEventListener('change', function(e){
+  var file = e.target.files && e.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(){
+    var img = new Image();
+    img.onload = function(){
+      var c = document.createElement('canvas');
+      c.width = 128; c.height = 128;
+      var ctx = c.getContext('2d');
+      var side = Math.min(img.width, img.height);
+      ctx.drawImage(img, (img.width - side)/2, (img.height - side)/2, side, side, 0, 0, 128, 128);
+      cfg.avatar = c.toDataURL('image/jpeg', 0.6);
+      saveCfg(); renderSettings(); applyAvatar();
+      toast('✅ תמונת הפרופיל נשמרה — תופיע בדאשבורד בסריקה הבאה', 'ok');
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+});
+function applyAvatar(){
+  var el = $('hdrAvatar');
+  if (cfg.avatar) { el.src = cfg.avatar; el.style.display = ''; } else { el.style.display = 'none'; }
 }
 
-async function dftFinish(){
-    const orders=Object.entries(dftOrders).filter(([k,v])=>v>0);
-    if(!orders.length){toast('אין הזמנות','err');return}
-    
-    // Build order list with item details
-    const orderList=orders.map(([item,qty])=>{
-        const r=dftData.find(d=>d.item===item);
-        return {item, qty, description:r?.description||'', mh:Math.round(r?.mh||0), surplusShortage:Math.round(r?.surplusShortage||0), locations:r?.locations||''}
-    });
-    
-    toast('📤 שולח הזמנות...','ok');
-    
-    // Send to n8n
-    if(C.url&&!C.off){
-        try{
-            const controller=new AbortController();
-            const timer=setTimeout(()=>controller.abort(),10000);
-            await fetch(C.url+'/scanner-scan',{
-                method:'POST',
-                headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({barcode:'__DFT_ORDERS__',device:C.dev||'מסופון',orders:orderList,timestamp:new Date().toISOString()}),
-                signal:controller.signal
-            });
-            clearTimeout(timer);
-            toast(`✅ ${orders.length} הזמנות נשלחו!`,'ok');
-            if(navigator.vibrate) navigator.vibrate([100,50,100]);
-            // Clear orders
-            dftOrders={};
-            localStorage.setItem('wso2','{}');
-            renderDft();
-        }catch(e){toast('❌ שליחה נכשלה','err')}
-    }else{toast('❌ לא מחובר','err')}
+// ============ TABS ============
+var TAB_TITLES = { scan:'📷 סריקה', dft:'📋 DFT DEMAND', loc:'📍 חיפוש מיקום', recv:'📥 קבלת סחורה', chat:'💬 צ׳אט', set:'⚙️ הגדרות' };
+var TAB_SCREENS = { scan:'scScan', dft:'scDft', loc:'scLoc', recv:'scRecv', chat:'scChat', set:'scSet' };
+function switchTab(name){
+  Object.keys(TAB_SCREENS).forEach(function(k){ $(TAB_SCREENS[k]).classList.toggle('on', k === name); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('on', t.dataset.tab === name); });
+  $('hdrTitle').textContent = TAB_TITLES[name];
+  if (name !== 'scan' && scanning) stopCam();
+  if (name !== 'set') { $('setLock').style.display = ''; $('setBody').style.display = 'none'; }
+  if (name === 'set') renderSettings();
+  if (name === 'chat') { chatUnread = 0; renderChatBadge(); renderChat(); renderChatUsers(); chatPull(); usersPull(); $('chatInput').focus(); }
+  if (name === 'loc') $('locQuery').focus();
+  if (name === 'recv') $('recvItem').focus();
 }
+document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click', function(){ switchTab(t.dataset.tab); }); });
 
-function handleWsDft(data){dftData=data;localStorage.setItem('wsd',JSON.stringify({data,ts:new Date().toISOString(),sort:{key:dftSortKey,dir:dftSortDir}}));if(document.getElementById('tDft').classList.contains('on'))renderDft()}
-
-// PWA
-if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
-let dp;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;
-    const b=document.createElement('div');b.id='installBanner';
-    b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,var(--blue),#2563eb);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;z-index:9999';
-    b.innerHTML='<span style="font-size:13px;font-weight:600">📱 התקן כאפליקציה</span><div><button onclick="iPWA()" style="background:#fff;color:#2563eb;border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer;margin-left:8px">התקן</button><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:rgba(255,255,255,.7);cursor:pointer;font-size:18px">✕</button></div>';
-    document.body.appendChild(b)});
-function iPWA(){if(dp){dp.prompt();dp.userChoice.then(()=>{dp=null;document.getElementById('installBanner')?.remove()})}}
+// ============ INIT ============
+renderHistory(); renderDft(); renderRecv(); renderChat(); renderChatUsers(); applyAvatar();
+setConn(false);
+fetch(n8n() + '/scanner-pending').then(function(r){ setConn(true); return r.json(); }).then(function(d){
+  lastServers = d;
+  if (d.dftDemand && d.dftDemand.data && d.dftDemand.data.length && !dftData.length) {
+    dftData = d.dftDemand.data; dftTs = d.dftDemand.timestamp || '';
+    LS.set('wpwaDft', { data: dftData, ts: dftTs }); renderDft();
+  }
+}).catch(function(){ setConn(false); });
+if ((cfg.termToken || '').trim()) { chatPull(); }
+if ('serviceWorker' in navigator) { try { navigator.serviceWorker.register('sw.js'); } catch(e){} }
+if (TAB_SCREENS[String(location.hash || '').replace('#','')]) switchTab(location.hash.replace('#',''));
 </script>
 </body>
 </html>
