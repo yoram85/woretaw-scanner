@@ -299,7 +299,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.0.2';
+var PWA_VERSION = '4.0.3';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -387,7 +387,7 @@ function termUp(kind, text, to){
 }
 
 // ============ SCAN ============
-var history = LS.get('wpwaScans', []);
+var scanHist = LS.get('wpwaScans', []);
 var scanner = null, scanning = false, torch = false;
 var lastCode = '', lastTime = 0, cooldownTimer = null;
 
@@ -404,11 +404,11 @@ function doScan(code){
   feedback();
   $('manual').value = code;
   var entry = { id: String(Date.now()), code: code, time: new Date().toLocaleTimeString('he-IL'), synced: false };
-  history.unshift(entry); if (history.length > 500) history.pop();
-  LS.set('wpwaScans', history); renderHistory();
+  scanHist.unshift(entry); if (scanHist.length > 500) scanHist.pop();
+  LS.set('wpwaScans', scanHist); renderHistory();
 
   post('/scanner-scan', { barcode: code, device: cfg.device || 'מסופון', avatar: cfg.avatar || null, target: cfg.target || '' })
-    .then(function(d){ if (d && d.success) { entry.synced = true; LS.set('wpwaScans', history); renderHistory(); } })
+    .then(function(d){ if (d && d.success) { entry.synced = true; LS.set('wpwaScans', scanHist); renderHistory(); } })
     .catch(function(){ toast('❌ אין חיבור — הסריקה תישאר בהיסטוריה', 'err'); });
 }
 function showCooldown(sec){ var el = $('cooldown'); el.style.display=''; el.textContent = 'המתן ' + sec + ' שנ׳ לסריקה הבאה'; }
@@ -422,10 +422,10 @@ function startCooldown(delayMs){
   }, 250);
 }
 function renderHistory(){
-  $('histTitle').textContent = '📋 היסטוריה (' + history.length + ')';
+  $('histTitle').textContent = '📋 היסטוריה (' + scanHist.length + ')';
   var el = $('histList');
-  if (!history.length) { el.innerHTML = '<div class="empty">סרוק ברקוד להתחלה</div>'; return; }
-  el.innerHTML = history.slice(0, 50).map(function(h){
+  if (!scanHist.length) { el.innerHTML = '<div class="empty">סרוק ברקוד להתחלה</div>'; return; }
+  el.innerHTML = scanHist.slice(0, 50).map(function(h){
     return '<div class="row" data-code="' + esc(h.code) + '" onclick="doScan(this.dataset.code)">' +
       '<div><div class="row-code">' + esc(h.code) + '</div></div>' +
       '<div style="text-align:left"><div class="row-time">' + esc(h.time) + '</div>' +
@@ -433,8 +433,8 @@ function renderHistory(){
   }).join('');
 }
 function clearHistory(){
-  if (!history.length) return;
-  history = []; LS.set('wpwaScans', history); renderHistory(); $('scanResult').innerHTML=''; toast('🗑️ ההיסטוריה נוקתה');
+  if (!scanHist.length) return;
+  scanHist = []; LS.set('wpwaScans', scanHist); renderHistory(); $('scanResult').innerHTML=''; toast('🗑️ ההיסטוריה נוקתה');
 }
 $('btnScan').onclick = function(){ scanning ? stopCam() : startCam(); };
 $('btnTorch').onclick = function(){
