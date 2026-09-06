@@ -304,7 +304,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.1.1';
+var PWA_VERSION = '4.2.0';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -842,6 +842,28 @@ function chatClear(){
 $('chatFile').addEventListener('change', function(e){
   var file = e.target.files && e.target.files[0];
   e.target.value = '';
+  chatHandleFile(file);
+});
+
+// Ctrl+V of a screenshot sends it with whatever caption is in the box —
+// the same path the 📎 button uses. (2026-09-07, Yoram)
+document.addEventListener('paste', function(e){
+  if (currentScreen !== 'chat') return;
+  var items = (e.clipboardData && e.clipboardData.items) || [];
+  var file = null;
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].kind === 'file') { file = items[i].getAsFile(); if (file) break; }
+  }
+  if (!file) return;                    // plain text — normal paste
+  e.preventDefault();
+  if (!file.name) {
+    var ext = ((file.type || 'image/png').split('/')[1] || 'png').replace('jpeg', 'jpg');
+    try { file = new File([file], 'screenshot-' + Date.now() + '.' + ext, { type: file.type }); } catch (err) {}
+  }
+  chatHandleFile(file);
+});
+
+function chatHandleFile(file){
   if (!file) return;
   if (file.size > 4.5 * 1024 * 1024) { toast('❌ הקובץ גדול מדי (עד 4.5MB)', 'err'); return; }
   var token = (cfg.termToken || '').trim();
@@ -876,7 +898,7 @@ $('chatFile').addEventListener('change', function(e){
     }
   };
   reader.readAsDataURL(file);
-});
+}
 
 function chatSend(){
   var input = $('chatInput');
@@ -994,7 +1016,9 @@ function applyAvatar(){
 // ============ TABS ============
 var TAB_TITLES = { scan:'📷 סריקה', dft:'📋 DFT DEMAND', loc:'📍 חיפוש מיקום', recv:'📥 קבלת סחורה', chat:'💬 צ׳אט', set:'⚙️ הגדרות' };
 var TAB_SCREENS = { scan:'scScan', dft:'scDft', loc:'scLoc', recv:'scRecv', chat:'scChat', set:'scSet' };
+var currentScreen = 'scan';   // which tab is open (the paste handler needs it)
 function switchTab(name){
+  currentScreen = name;
   Object.keys(TAB_SCREENS).forEach(function(k){ $(TAB_SCREENS[k]).classList.toggle('on', k === name); });
   document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('on', t.dataset.tab === name); });
   $('hdrTitle').textContent = TAB_TITLES[name];
