@@ -215,12 +215,17 @@
 
 <!-- ===================== CHAT ===================== -->
 <div class="screen" id="scChat">
-  <div id="chatUsers" style="padding:8px 12px;border-bottom:1px solid #1e293b;font-size:11px;color:#94a3b8;cursor:pointer"></div>
+  <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid #1e293b">
+    <div id="chatUsers" style="flex:1;padding:8px 12px;font-size:11px;color:#94a3b8;cursor:pointer"></div>
+    <button class="link-danger" style="padding:8px 12px" onclick="chatClear()" title="נקה שיחה">🗑️ נקה</button>
+  </div>
   <div id="chatStatus" style="padding:4px 12px;font-size:10px;color:#475569"></div>
   <div id="chatList" style="padding:12px;max-height:calc(100vh - 250px);overflow-y:auto"></div>
   <div style="position:fixed;bottom:78px;left:0;right:0;display:flex;gap:8px;padding:10px 12px;background:#0f172a;border-top:1px solid #1e293b">
     <button class="icon-btn" onclick="chatSend()">➤</button>
     <input class="field" id="chatInput" type="text" enterkeyhint="send" placeholder="הודעה לכולם…" autocomplete="off" style="flex:1;font-size:16px">
+    <button class="icon-btn" style="background:#334155" onclick="document.getElementById('chatFile').click()" title="צרף קובץ">📎</button>
+    <input type="file" id="chatFile" style="display:none" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv">
   </div>
 </div>
 
@@ -299,7 +304,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.0.3';
+var PWA_VERSION = '4.1.0';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -644,10 +649,10 @@ var onlineUsers = [], usersExpanded = false;
 
 function chatKey(m){ return String(m.id || (m.timestamp + '|' + m.text)); }
 function chatAdd(m, notify){
-  if (!m || !m.text) return;
+  if (!m || (!m.text && !m.file)) return;
   if (chatMsgs.some(function(x){ return chatKey(x) === chatKey(m); })) return;
   chatMsgs.push({ id: m.id, from: m.from, to: m.to || null, fromName: m.fromName || 'משתמש', text: m.text,
-                  priv: !!m.priv, isTerminal: !!m.isTerminal, mine: !!m.mine,
+                  priv: !!m.priv, isTerminal: !!m.isTerminal, mine: !!m.mine, file: m.file || null,
                   timestamp: m.timestamp || new Date().toISOString() });
   if (chatMsgs.length > 300) chatMsgs = chatMsgs.slice(-300);
   LS.set('wpwaChat', chatMsgs);
@@ -697,12 +702,25 @@ busAdd(function(it){
       var first = lastPullId === 0;
       (d.msgs || []).forEach(function(m){
         chatAdd({ id: m.id, from: m.from, to: m.to || null, fromName: m.fromName, text: m.text, priv: !!m.priv,
-                  isTerminal: String(m.from || '').indexOf('TERM:') === 0, timestamp: m.ts }, !first);
+                  file: m.file || null, isTerminal: String(m.from || '').indexOf('TERM:') === 0, timestamp: m.ts }, !first);
       });
       var n = Number(d.last);
       if (!isNaN(n) && n > lastPullId) lastPullId = n;
       chatStatus('עודכן ' + new Date().toLocaleTimeString('he-IL'));
     } catch(e){}
+    return;
+  }
+  if (t.indexOf('##FILE##') === 0) {
+    try {
+      var fd = JSON.parse(t.slice(8));
+      for (var i = chatMsgs.length - 1; i >= 0; i--) {
+        if (chatMsgs[i].file && String(chatMsgs[i].file.id) === String(fd.id)) {
+          chatMsgs[i].file = Object.assign({}, chatMsgs[i].file, { data: fd.data, name: fd.name, type: fd.type });
+          break;
+        }
+      }
+      LS.set('wpwaChat', chatMsgs); renderChat(); toast('✅ הקובץ הורד', 'ok');
+    } catch(e){ toast('❌ הקובץ לא נטען', 'err'); }
     return;
   }
   if (t.indexOf('מחוברים כרגע') === 0) {
@@ -776,13 +794,85 @@ function renderChat(){
       ';border-radius:12px;padding:8px 10px">' +
         '<div style="font-size:10px;color:' + (mine ? '#bfdbfe' : '#64748b') + ';margin-bottom:2px">' + esc(m.fromName) +
         (m.isTerminal ? ' · מסופון' : '') + (m.priv ? ' · פרטי' : '') + '</div>' +
-        '<div style="font-size:13px;line-height:1.5;white-space:pre-wrap">' + esc(m.text) + '</div>' +
+        (m.text ? '<div style="font-size:13px;line-height:1.5;white-space:pre-wrap">' + esc(m.text) + '</div>' : '') +
+        (m.file ? chatFileHtml(m.file, m.id) : '') +
         '<div style="font-size:9px;color:' + (mine ? '#93c5fd' : '#475569') + ';margin-top:3px;text-align:left">' +
           (isNaN(t) ? '' : t.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' })) + '</div>' +
       '</div></div>';
   }).join('');
   el.scrollTop = el.scrollHeight;
 }
+// Attachments: the job queue only carries a reference, so the bytes are
+// fetched from the plant server (through the bridge) on demand.
+function chatFileHtml(f, msgId){
+  if (!f) return '';
+  var isImg = String(f.type || '').indexOf('image/') === 0;
+  if (f.data) {
+    return isImg
+      ? '<img src="' + esc(f.data) + '" style="max-width:100%;border-radius:8px;margin-top:6px" alt="">'
+      : '<a href="' + esc(f.data) + '" download="' + esc(f.name || 'file') + '" style="display:inline-block;margin-top:6px;color:#93c5fd;font-size:12px">📎 ' + esc(f.name || 'קובץ') + '</a>';
+  }
+  if (f.id) {
+    return '<div style="margin-top:6px"><span onclick="chatFileGet(\'' + esc(f.id) + '\')" ' +
+      'style="color:#93c5fd;font-size:12px;cursor:pointer">📎 ' + esc(f.name || 'קובץ') + ' — הורד</span></div>';
+  }
+  return '<div style="margin-top:6px;color:#93c5fd;font-size:12px">📎 ' + esc(f.name || 'קובץ') + '</div>';
+}
+function chatFileGet(fileId){
+  toast('⏳ מוריד…');
+  termUp('command', 'chatfile ' + fileId).catch(function(){ toast('❌ ההורדה נכשלה', 'err'); });
+}
+
+function chatClear(){
+  var what = chatTarget ? ('השיחה עם ' + chatTarget.name) : 'הצ׳אט הקבוצתי';
+  if (!confirm('לנקות את ' + what + ' מהמכשיר הזה?')) return;
+  chatMsgs = chatMsgs.filter(function(m){ return chatTarget
+    ? !(m.priv && (String(m.from) === String(chatTarget.odbc) || String(m.to) === String(chatTarget.odbc)))
+    : m.priv; });
+  LS.set('wpwaChat', chatMsgs);
+  renderChat();
+  toast('🗑️ ' + what + ' נוקתה');
+}
+
+$('chatFile').addEventListener('change', function(e){
+  var file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (file.size > 4.5 * 1024 * 1024) { toast('❌ הקובץ גדול מדי (עד 4.5MB)', 'err'); return; }
+  var token = (cfg.termToken || '').trim();
+  if (!token) { toast('חסר קוד גישה — הזן בהגדרות ← חיבור', 'err'); return; }
+  var reader = new FileReader();
+  reader.onload = function(){
+    var caption = $('chatInput').value.trim();
+    $('chatInput').value = '';
+    function upload(dataUrl, name, type){
+      if (dataUrl.length > 400000) { toast('❌ הקובץ גדול מדי לשליחה מהטלפון', 'err'); return; }
+      toast('⏳ מעלה ' + name + '…');
+      termUp('command', 'chatput ' + JSON.stringify({ n: name, t: type, c: caption, to: chatTarget ? chatTarget.odbc : '', d: dataUrl }))
+        .then(function(){ beep(); }).catch(function(){ toast('❌ ההעלאה נכשלה', 'err'); });
+    }
+    // Photos are shrunk first — a raw phone photo is several MB and would
+    // never fit through the queue.
+    if (String(file.type || '').indexOf('image/') === 0) {
+      var img = new Image();
+      img.onload = function(){
+        var max = 1280, w = img.width, h = img.height;
+        if (w > max || h > max) { var r = Math.min(max / w, max / h); w = Math.round(w * r); h = Math.round(h * r); }
+        var c = document.createElement('canvas'); c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        var q = 0.7, out = c.toDataURL('image/jpeg', q);
+        while (out.length > 380000 && q > 0.3) { q -= 0.1; out = c.toDataURL('image/jpeg', q); }
+        upload(out, file.name.replace(/\.[^.]+$/, '') + '.jpg', 'image/jpeg');
+      };
+      img.onerror = function(){ upload(reader.result, file.name, file.type || ''); };
+      img.src = reader.result;
+    } else {
+      upload(reader.result, file.name, file.type || 'application/octet-stream');
+    }
+  };
+  reader.readAsDataURL(file);
+});
+
 function chatSend(){
   var input = $('chatInput');
   var text = input.value.trim();
