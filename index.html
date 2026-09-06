@@ -304,7 +304,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.2.0';
+var PWA_VERSION = '4.3.0';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -779,6 +779,10 @@ $('chatUsers').addEventListener('click', function(e){
 
 function renderChat(){
   var el = $('chatList');
+  // Keep the reader in place; follow the newest only when already at the
+  // bottom, so an arriving message cannot yank the view. 2026-09-07 (Yoram)
+  var stick = el.scrollHeight === 0 || (el.scrollHeight - el.scrollTop - el.clientHeight) <= 120;
+  var prevTop = el.scrollTop;
   var shown = chatMsgs.filter(function(m){ return chatTarget
     ? (m.priv && (String(m.from) === String(chatTarget.odbc) || String(m.to) === String(chatTarget.odbc) || m.mine))
     : !m.priv; });
@@ -800,8 +804,80 @@ function renderChat(){
           (isNaN(t) ? '' : t.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' })) + '</div>' +
       '</div></div>';
   }).join('');
-  el.scrollTop = el.scrollHeight;
+  if (stick) el.scrollTop = el.scrollHeight; else el.scrollTop = prevTop;
 }
+// ===== IMAGE VIEWER (2026-09-07, Yoram) =====
+// Tapping a picture in the chat opens it full screen: pinch or the +/− buttons
+// zoom, dragging pans, ⟳ resets, ✕ or the dark area closes.
+var zoomBox = null, zoomState = { s: 1, x: 0, y: 0 };
+function imgZoom(src){
+  if (!zoomBox) {
+    zoomBox = document.createElement('div');
+    zoomBox.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;display:none;' +
+      'align-items:center;justify-content:center;overflow:hidden;touch-action:none';
+    zoomBox.innerHTML =
+      '<div id="zoomBar" style="position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;' +
+      'align-items:center;gap:8px;background:rgba(255,255,255,.14);border-radius:22px;padding:6px 10px">' +
+        '<button data-act="out" style="width:32px;height:32px;border-radius:50%;border:none;background:rgba(255,255,255,.18);color:#fff;font-size:16px">−</button>' +
+        '<span id="zoomPct" style="color:#fff;font-size:12px;min-width:44px;text-align:center">100%</span>' +
+        '<button data-act="in" style="width:32px;height:32px;border-radius:50%;border:none;background:rgba(255,255,255,.18);color:#fff;font-size:16px">+</button>' +
+        '<button data-act="reset" style="width:32px;height:32px;border-radius:50%;border:none;background:rgba(255,255,255,.18);color:#fff;font-size:14px">⟳</button>' +
+        '<a id="zoomDl" download style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;font-size:15px;line-height:32px;text-align:center;text-decoration:none">⤓</a>' +
+        '<button data-act="close" style="width:32px;height:32px;border-radius:50%;border:none;background:rgba(255,255,255,.18);color:#fff;font-size:15px">✕</button>' +
+      '</div>' +
+      '<img id="zoomImg" style="max-width:94vw;max-height:86vh;transform-origin:center center;user-select:none" alt="">';
+    document.body.appendChild(zoomBox);
+    var im = zoomBox.querySelector('#zoomImg');
+    var apply = () => {
+      im.style.transform = 'translate(' + zoomState.x + 'px,' + zoomState.y + 'px) scale(' + zoomState.s + ')';
+      zoomBox.querySelector('#zoomPct').textContent = Math.round(zoomState.s * 100) + '%';
+    };
+    var zoom = f => { zoomState.s = Math.min(8, Math.max(0.2, zoomState.s * f)); apply(); };
+    zoomBox._reset = () => { zoomState = { s: 1, x: 0, y: 0 }; apply(); };
+    zoomBox.querySelector('#zoomBar').addEventListener('click', e => {
+      var act = e.target.getAttribute('data-act');
+      if (!act) return;
+      e.stopPropagation();
+      if (act === 'in') zoom(1.25);
+      else if (act === 'out') zoom(1/1.25);
+      else if (act === 'reset') zoomBox._reset();
+      else zoomBox.style.display = 'none';
+    });
+    zoomBox.addEventListener('click', e => { if (e.target === zoomBox) zoomBox.style.display = 'none'; });
+    zoomBox.addEventListener('wheel', e => { e.preventDefault(); zoom(e.deltaY < 0 ? 1.12 : 1/1.12); }, { passive:false });
+    // Touch: two fingers zoom, one finger pans
+    var d0 = 0, s0 = 1, px = 0, py = 0, ox = 0, oy = 0;
+    var dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    im.addEventListener('touchstart', e => {
+      if (e.touches.length === 2) { d0 = dist(e.touches); s0 = zoomState.s; }
+      else if (e.touches.length === 1) { px = e.touches[0].clientX; py = e.touches[0].clientY; ox = zoomState.x; oy = zoomState.y; }
+    }, { passive:true });
+    im.addEventListener('touchmove', e => {
+      if (e.touches.length === 2 && d0) {
+        e.preventDefault();
+        zoomState.s = Math.min(8, Math.max(0.2, s0 * (dist(e.touches) / d0)));
+        apply();
+      } else if (e.touches.length === 1) {
+        e.preventDefault();
+        zoomState.x = ox + (e.touches[0].clientX - px);
+        zoomState.y = oy + (e.touches[0].clientY - py);
+        apply();
+      }
+    }, { passive:false });
+    // Mouse drag
+    var drag = null;
+    im.addEventListener('mousedown', e => { e.preventDefault(); drag = { x: e.clientX - zoomState.x, y: e.clientY - zoomState.y }; });
+    window.addEventListener('mousemove', e => { if (!drag) return; zoomState.x = e.clientX - drag.x; zoomState.y = e.clientY - drag.y; apply(); });
+    window.addEventListener('mouseup', () => { drag = null; });
+    document.addEventListener('keydown', e => { if (zoomBox.style.display !== 'none' && e.key === 'Escape') zoomBox.style.display = 'none'; });
+  }
+  zoomBox.querySelector('#zoomImg').src = src;
+  var dl = zoomBox.querySelector('#zoomDl');
+  dl.href = src; dl.setAttribute('download', 'image-' + Date.now() + '.png');
+  zoomBox._reset();
+  zoomBox.style.display = 'flex';
+}
+
 // Attachments: the job queue only carries a reference, so the bytes are
 // fetched from the plant server (through the bridge) on demand.
 function chatFileHtml(f, msgId){
@@ -814,7 +890,7 @@ function chatFileHtml(f, msgId){
       '" style="display:inline-block;margin-top:6px;color:#93c5fd;font-size:12px">📎 ' +
       (isImg ? 'שמור · ' : '') + esc(f.name || 'קובץ') + '</a>';
     return isImg
-      ? '<img src="' + esc(f.data) + '" style="max-width:100%;border-radius:8px;margin-top:6px" alt=""><br>' + link
+      ? '<img src="' + esc(f.data) + '" onclick="imgZoom(this.src)" style="max-width:100%;border-radius:8px;margin-top:6px;cursor:zoom-in" alt=""><br>' + link
       : link;
   }
   if (f.id) {
