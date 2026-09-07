@@ -16,6 +16,7 @@
      woretaw-term queue for chat/location/users, with access code + target
      server in the settings). -->
 <script src="html5-qrcode.min.js" defer></script>
+<script src="zxing-reader.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html { max-width:100%; overflow-x:hidden; }
@@ -326,7 +327,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.5.0';
+var PWA_VERSION = '4.6.0';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -472,97 +473,186 @@ $('btnTorch').onclick = function(){
     else if (scanner) scanner.applyVideoConstraints({ advanced: [{ torch: torch }] });
   } catch (e) {}
 };
-// ===== SCANNING (rewritten 2026-09-07, Yoram) =====
-// Two engines. The first choice is the browser's own BarcodeDetector, which on
-// Android is Google Play Services' barcode reader — the same engine the APK
-// uses, and the reason the APK reads 1D barcodes the PWA could not. It reads
-// the WHOLE frame, so a barcode anywhere in view is decoded.
-// html5-qrcode (ZXing) stays as the fallback for browsers without it (iOS
-// Safari), now configured the way the library's author recommends for 1D:
-// a wide scan box plus the native-detector flag.
-// The old setup failed for two reasons at once: ZXing is weak on long 1D
-// codes, and a 250x150 qrbox is a crop of the RAW frame (often 1920x1080)
-// while the preview is stretched with object-fit:cover — so the barcode the
-// user aimed at was frequently outside the region actually being scanned.
-var camStream = null, camTrack = null, detector = null, frameReq = 0, frameTimer = 0, camEngine = '';
-var SCAN_FORMATS = ['code_128','code_39','code_93','codabar','ean_13','ean_8','itf','upc_a','upc_e','qr_code','data_matrix','pdf417','aztec'];
+// ===== SCANNING (rebuilt 2026-09-07, Yoram) =====
+// The goal is what the APK does. The APK reads barcodes with Google's ML Kit,
+// so the browser gets the same treatment, in this order:
+//   1. BarcodeDetector — on Android this IS ML Kit (through Play Services).
+//   2. ZXing compiled to WebAssembly — the real C++ engine, not the weak
+//      JavaScript port. This is what carries iPhones, Windows computers, and
+//      Android phones whose Play Services module has not downloaded yet.
+//   3. html5-qrcode — last resort, only if the WebAssembly file never loaded.
+// Both of the first two read the WHOLE frame; the old code scanned a 250x150
+// crop of a 1920x1080 picture, which is why aiming almost never worked.
+var camStream = null, camTrack = null, detector = null, frameReq = 0, frameTimer = 0;
+var camEngine = '', wasmMod = null, probeTimer = 0, decodeCanvas = null;
+// Same barcode set the APK asks ML Kit for, plus a few harmless extras
+var NATIVE_FORMATS = ['code_128','code_39','code_93','codabar','ean_13','ean_8','itf','upc_a','upc_e','qr_code','data_matrix','pdf417','aztec'];
+var WASM_FORMATS = ['Code128','Code39','Code93','Codabar','EAN-13','EAN-8','ITF','UPC-A','UPC-E','QRCode','DataMatrix','PDF417','Aztec'];
 
-function camInfo(txt){ $('camInfo').textContent = txt || ''; }
+function camInfo(t){ $('camInfo').textContent = t || ''; }
+
+// --- the WebAssembly engine is prepared in the background, once ---
+function initWasm(){
+  if (wasmMod) return Promise.resolve(true);
+  if (typeof ZXingWASM === 'undefined') return Promise.resolve(false);
+  try {
+    ZXingWASM.setZXingModuleOverrides({
+      locateFile: function(path){ return new URL(path, location.href).href; }
+    });
+  } catch (e) {}
+  return ZXingWASM.getZXingModule().then(function(m){ wasmMod = m || true; return true; })
+    .catch(function(e){ console.warn('zxing wasm failed', e); return false; });
+}
+initWasm();
+
+// Is the operating system's own detector usable right now? On Android the
+// module arrives through Play Services, so the answer can change later.
+function nativeFormats(){
+  if (!('BarcodeDetector' in window)) return Promise.resolve(null);
+  return window.BarcodeDetector.getSupportedFormats()
+    .then(function(f){ return (f && f.indexOf('code_128') >= 0) ? f : null; })
+    .catch(function(){ return null; });
+}
 
 function startCam(){
   $('camWrap').classList.add('on');
   camInfo('מפעיל מצלמה…');
-  startNative().then(function(ok){ if (!ok) startZxing(); })
-               .catch(function(e){ console.warn('native scanner failed', e); startZxing(); });
-}
-
-// --- engine 1: the operating system's own detector ---
-function startNative(){
-  if (!('BarcodeDetector' in window)) return Promise.resolve(false);
-  return window.BarcodeDetector.getSupportedFormats().then(function(supported){
-    // On Android the module is downloaded by Play Services; until it is there
-    // the list comes back empty and we must fall back.
-    if (!supported || supported.indexOf('code_128') < 0) return false;
-    var v = $('camVideo');
-    return navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        facingMode: { ideal: cfg.camera || 'environment' },
-        width: { ideal: 1920 }, height: { ideal: 1080 },
-        // Continuous autofocus is what makes a printed barcode sharp enough
-        advanced: [{ focusMode: 'continuous' }, { focusMode: 'continuous-picture' }]
-      }
-    }).then(function(stream){
-      camStream = stream;
-      camTrack = stream.getVideoTracks()[0];
-      v.srcObject = stream;
-      v.classList.add('on');
-      return v.play().catch(function(){}).then(function(){
-        detector = new window.BarcodeDetector({
-          formats: SCAN_FORMATS.filter(function(f){ return supported.indexOf(f) >= 0; })
-        });
-        camEngine = 'native';
-        scanning = true;
-        $('btnScan').textContent = '⏹️ עצור'; $('btnScan').classList.add('active');
-        setupZoom();
-        var st = camTrack.getSettings ? camTrack.getSettings() : {};
-        camInfo('מנוע: מערכת ההפעלה · ' + (st.width || '?') + '×' + (st.height || '?'));
-        nativeLoop();
-        return true;
+  openCamera().then(function(){
+    return nativeFormats().then(function(f){
+      if (f) { useNative(f); return; }
+      return initWasm().then(function(ok){
+        if (ok) { useWasm(); watchForNative(); }
+        else { closeCamera(); startZxingJs(); }
       });
     });
-  }).catch(function(e){ console.warn('BarcodeDetector unavailable', e); return false; });
+  }).catch(function(err){
+    $('camWrap').classList.remove('on'); camInfo('');
+    toast('❌ מצלמה: ' + (err && err.message ? err.message : err), 'err');
+  });
 }
 
-function nativeLoop(){
+// One camera, shared by both engines
+function openCamera(){
+  var v = $('camVideo');
+  return navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: {
+      facingMode: { ideal: cfg.camera || 'environment' },
+      width: { ideal: 1920 }, height: { ideal: 1080 },
+      advanced: [{ focusMode: 'continuous' }, { focusMode: 'continuous-picture' }]
+    }
+  }).then(function(stream){
+    camStream = stream;
+    camTrack = stream.getVideoTracks()[0];
+    v.srcObject = stream;
+    v.classList.add('on');
+    return v.play().catch(function(){}).then(function(){
+      scanning = true;
+      $('btnScan').textContent = '⏹️ עצור'; $('btnScan').classList.add('active');
+      setupZoom();
+    });
+  });
+}
+
+function closeCamera(){
+  var v = $('camVideo');
+  if (camStream) { try { camStream.getTracks().forEach(function(t){ t.stop(); }); } catch (e) {} }
+  camStream = null; camTrack = null;
+  v.srcObject = null; v.classList.remove('on');
+}
+
+function camRes(){
+  var st = (camTrack && camTrack.getSettings) ? camTrack.getSettings() : {};
+  return (st.width || '?') + '×' + (st.height || '?');
+}
+
+// --- engine 1: the operating system (ML Kit on Android) ---
+function useNative(formats){
+  detector = new window.BarcodeDetector({ formats: NATIVE_FORMATS.filter(function(f){ return formats.indexOf(f) >= 0; }) });
+  camEngine = 'native';
+  camInfo('מנוע: מערכת ההפעלה (כמו באפליקציה) · ' + camRes());
+  loop(function(v){
+    return detector.detect(v).then(function(list){
+      return (list && list.length && list[0].rawValue) ? list[0].rawValue : '';
+    });
+  });
+}
+
+// --- engine 2: ZXing C++ through WebAssembly ---
+function useWasm(){
+  camEngine = 'wasm';
+  camInfo('מנוע: ZXing WASM · ' + camRes());
+  if (!decodeCanvas) decodeCanvas = document.createElement('canvas');
+  var opts = { formats: WASM_FORMATS, tryHarder: true, tryRotate: true, tryInvert: true,
+               tryDownscale: true, maxNumberOfSymbols: 1 };
+  loop(function(v){
+    var w = v.videoWidth, h = v.videoHeight;
+    if (!w || !h) return Promise.resolve('');
+    // Full frame, capped so a huge picture does not slow the loop down
+    var scale = Math.min(1, 1600 / w);
+    decodeCanvas.width = Math.round(w * scale);
+    decodeCanvas.height = Math.round(h * scale);
+    var c2d = decodeCanvas.getContext('2d', { willReadFrequently: true });
+    c2d.drawImage(v, 0, 0, decodeCanvas.width, decodeCanvas.height);
+    var img = c2d.getImageData(0, 0, decodeCanvas.width, decodeCanvas.height);
+    return ZXingWASM.readBarcodesFromImageData(img, opts).then(function(res){
+      return (res && res.length && res[0].text) ? res[0].text : '';
+    });
+  });
+}
+
+// Play Services may finish downloading its barcode module while we run on
+// WebAssembly — switch over the moment it becomes available.
+function watchForNative(){
+  if (probeTimer) clearInterval(probeTimer);
+  probeTimer = setInterval(function(){
+    if (!scanning || camEngine !== 'wasm') { clearInterval(probeTimer); probeTimer = 0; return; }
+    nativeFormats().then(function(f){
+      if (!f || !scanning || camEngine !== 'wasm') return;
+      clearInterval(probeTimer); probeTimer = 0;
+      stopLoop();
+      useNative(f);
+    });
+  }, 5000);
+}
+
+// One decode loop for both engines
+function stopLoop(){
+  if (frameTimer) { clearTimeout(frameTimer); frameTimer = 0; }
+  var v = $('camVideo');
+  if (frameReq && v.cancelVideoFrameCallback) { try { v.cancelVideoFrameCallback(frameReq); } catch (e) {} }
+  frameReq = 0;
+}
+
+function loop(decodeOnce){
   var v = $('camVideo');
   var busy = false;
+  var mine = camEngine;
+  var schedule = function(){
+    if (!scanning || camEngine !== mine) return;
+    if (v.requestVideoFrameCallback) frameReq = v.requestVideoFrameCallback(tick);
+    else frameTimer = setTimeout(tick, 80);
+  };
   var tick = function(){
-    if (!scanning || camEngine !== 'native') return;
+    if (!scanning || camEngine !== mine) return;
     if (busy || v.readyState < 2) { schedule(); return; }
     busy = true;
-    detector.detect(v).then(function(list){
+    decodeOnce(v).then(function(text){
       busy = false;
-      if (list && list.length && list[0].rawValue) doScan(list[0].rawValue);
+      if (text) doScan(text);
       schedule();
     }).catch(function(){ busy = false; schedule(); });
-  };
-  var schedule = function(){
-    if (!scanning || camEngine !== 'native') return;
-    if (v.requestVideoFrameCallback) frameReq = v.requestVideoFrameCallback(tick);
-    else frameTimer = setTimeout(tick, 100);
   };
   schedule();
 }
 
-// Pinching is not available on a <video>, so a zoom slider stands in — small
-// barcodes need it, and the camera's own zoom keeps the image sharp.
+// Pinching a <video> does nothing, so the camera's own zoom gets a slider —
+// small barcodes read far better zoomed in than moved closer.
 function setupZoom(){
   var row = $('zoomRow'), slider = $('camZoom');
   var caps = (camTrack && camTrack.getCapabilities) ? camTrack.getCapabilities() : {};
   if (!caps || !caps.zoom) { row.classList.remove('on'); return; }
-  slider.min = caps.zoom.min; slider.max = caps.zoom.max;
-  slider.step = caps.zoom.step || 0.1;
+  slider.min = caps.zoom.min; slider.max = caps.zoom.max; slider.step = caps.zoom.step || 0.1;
   var st = camTrack.getSettings ? camTrack.getSettings() : {};
   slider.value = st.zoom || caps.zoom.min;
   slider.oninput = function(){
@@ -571,21 +661,17 @@ function setupZoom(){
   row.classList.add('on');
 }
 
-// --- engine 2: ZXing through html5-qrcode ---
-function startZxing(){
+// --- engine 3: last resort, only if the WebAssembly file never loaded ---
+function startZxingJs(){
   if (typeof Html5Qrcode === 'undefined') { $('camWrap').classList.remove('on'); toast('❌ ספריית הסריקה לא נטענה', 'err'); return; }
   scanner = new Html5Qrcode('reader');
   var conf = {
     fps: 10,
-    // A wide box, sized from the view — the author's own advice for 1D codes
     qrbox: function(w, h){ return { width: Math.floor(w * 0.9), height: Math.floor(Math.min(h * 0.55, w * 0.45)) }; },
     aspectRatio: 1.777,
     experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-    videoConstraints: {
-      facingMode: { ideal: cfg.camera || 'environment' },
-      width: { ideal: 1920 }, height: { ideal: 1080 },
-      advanced: [{ focusMode: 'continuous' }]
-    },
+    videoConstraints: { facingMode: { ideal: cfg.camera || 'environment' },
+                        width: { ideal: 1920 }, height: { ideal: 1080 } },
     formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
       Html5QrcodeSupportedFormats.CODE_93, Html5QrcodeSupportedFormats.CODABAR,
       Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
@@ -595,15 +681,11 @@ function startZxing(){
   };
   scanner.start({ facingMode: cfg.camera || 'environment' }, conf, function(t){ doScan(t); }, function(){})
     .then(function(){
-      camEngine = 'zxing'; scanning = true;
+      camEngine = 'zxingjs'; scanning = true;
       $('btnScan').textContent = '⏹️ עצור'; $('btnScan').classList.add('active');
-      camInfo('מנוע: ZXing (הדפדפן לא תומך בזיהוי מובנה)');
+      camInfo('מנוע: ZXing JS (גיבוי אחרון)');
     })
-    .catch(function(err){
-      $('camWrap').classList.remove('on');
-      camInfo('');
-      toast('❌ מצלמה: ' + err, 'err');
-    });
+    .catch(function(err){ $('camWrap').classList.remove('on'); camInfo(''); toast('❌ מצלמה: ' + err, 'err'); });
 }
 
 function stopCam(){
@@ -613,38 +695,29 @@ function stopCam(){
     $('btnTorch').classList.remove('active'); $('camWrap').classList.remove('on');
     $('zoomRow').classList.remove('on'); camInfo('');
   };
-  if (frameTimer) { clearTimeout(frameTimer); frameTimer = 0; }
-  var v = $('camVideo');
-  if (frameReq && v.cancelVideoFrameCallback) { try { v.cancelVideoFrameCallback(frameReq); } catch (e) {} }
-  frameReq = 0;
-  if (camStream) {
-    try { camStream.getTracks().forEach(function(t){ t.stop(); }); } catch (e) {}
-    camStream = null; camTrack = null;
-    v.srcObject = null; v.classList.remove('on');
-    done();
-    return;
-  }
+  if (probeTimer) { clearInterval(probeTimer); probeTimer = 0; }
+  stopLoop();
+  if (camStream) { closeCamera(); done(); return; }
   if (!scanner) { done(); return; }
   scanner.stop().then(done).catch(done);
 }
 
-// A quick self-check the user can read out loud when scanning misbehaves
+// A self-check the user can run and send back when scanning misbehaves
 function camDiag(){
   var lines = [];
   lines.push('חיבור מאובטח: ' + (window.isSecureContext ? 'כן' : 'לא — מצלמה חסומה'));
   lines.push('getUserMedia: ' + (navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? 'קיים' : 'חסר'));
-  lines.push('זיהוי מובנה: ' + ('BarcodeDetector' in window ? 'קיים' : 'חסר'));
+  lines.push('זיהוי מערכת: ' + ('BarcodeDetector' in window ? 'קיים' : 'חסר'));
+  lines.push('מנוע WASM: ' + (typeof ZXingWASM === 'undefined' ? 'לא נטען' : (wasmMod ? 'מוכן' : 'נטען, ממתין')));
+  if (camEngine) lines.push('מנוע פעיל כרגע: ' + camEngine + ' · ' + camRes());
   var show = function(){ alert('בדיקת מצלמה\n\n' + lines.join('\n')); };
   if (!('BarcodeDetector' in window)) { show(); return; }
   window.BarcodeDetector.getSupportedFormats().then(function(f){
-    lines.push('פורמטים: ' + ((f && f.length) ? f.join(', ') : 'רשימה ריקה — Play Services לא הוריד עדיין את המודול'));
-    if (camTrack && camTrack.getSettings) {
-      var st = camTrack.getSettings();
-      lines.push('רזולוציה: ' + st.width + '×' + st.height);
-    }
+    lines.push('פורמטים של המערכת: ' + ((f && f.length) ? f.join(', ') : 'רשימה ריקה — Play Services לא הוריד את המודול'));
     show();
   }).catch(function(e){ lines.push('שגיאה: ' + e); show(); });
 }
+
 $('manual').addEventListener('keydown', function(e){ if (e.key === 'Enter') { doScan(e.target.value); e.target.select(); } });
 
 // ============ DFT ============

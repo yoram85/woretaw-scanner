@@ -1,9 +1,11 @@
-const CACHE = 'woretaw-scanner-v20260907e';
+const CACHE = 'woretaw-scanner-v20260907f';
 const ASSETS = [
   '/woretaw-scanner/',
   '/woretaw-scanner/index.html',
   '/woretaw-scanner/manifest.json',
-  '/woretaw-scanner/html5-qrcode.min.js'
+  '/woretaw-scanner/html5-qrcode.min.js',
+  '/woretaw-scanner/zxing-reader.js',
+  '/woretaw-scanner/zxing_reader.wasm'
 ];
 
 // Install — cache all assets
