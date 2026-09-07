@@ -327,7 +327,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.6.0';
+var PWA_VERSION = '4.6.1';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -430,7 +430,9 @@ function doScan(code){
   if (delayMs > 0) startCooldown(delayMs);
 
   feedback();
-  $('manual').value = code;
+  // The box empties after every scan, exactly like the app — otherwise the
+  // previous code sits there and the next scan looks like it did nothing.
+  $('manual').value = '';
   var entry = { id: String(Date.now()), code: code, time: new Date().toLocaleTimeString('he-IL'), synced: false };
   scanHist.unshift(entry); if (scanHist.length > 500) scanHist.pop();
   LS.set('wpwaScans', scanHist); renderHistory();
@@ -718,7 +720,7 @@ function camDiag(){
   }).catch(function(e){ lines.push('שגיאה: ' + e); show(); });
 }
 
-$('manual').addEventListener('keydown', function(e){ if (e.key === 'Enter') { doScan(e.target.value); e.target.select(); } });
+$('manual').addEventListener('keydown', function(e){ if (e.key === 'Enter') { doScan(e.target.value); } });
 
 // ============ DFT ============
 var dftCache = LS.get('wpwaDft', { data: [], ts: '' });
