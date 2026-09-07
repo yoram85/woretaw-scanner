@@ -52,16 +52,11 @@
   .laser { position:absolute; top:50%; left:10%; right:10%; height:2px; background:#ef4444; opacity:.7; pointer-events:none; }
   .cam-info { font-size:10px; color:#64748b; text-align:center; padding:2px 12px 6px; }
 
-  /* Full-screen pop-up scanner used by מיקום / קבלה / צ׳אט */
-  .scan-sheet { position:fixed; inset:0; background:#000; z-index:9998; display:none; flex-direction:column; }
-  .scan-sheet.on { display:flex; }
-  .scan-sheet .sheet-bar { display:flex; align-items:center; gap:10px; padding:12px; background:#0f172a; }
-  .scan-sheet .sheet-bar .t { flex:1; color:#e2e8f0; font-weight:700; font-size:14px; }
-  .scan-sheet .sheet-bar button { background:#334155; border:none; color:#fff; width:40px; height:40px;
-                                  border-radius:10px; font-size:16px; cursor:pointer; }
-  .scan-sheet .sheet-bar button.active { background:#f59e0b; color:#000; }
-  .scan-sheet video { flex:1; width:100%; object-fit:cover; background:#000; }
-  .scan-sheet .sheet-info { padding:6px 12px 14px; text-align:center; color:#64748b; font-size:11px; background:#0f172a; }
+  /* The scanner used by מיקום / קבלה / צ׳אט — the same framed box as the
+     סריקה tab, sitting inside the screen rather than covering it */
+  .scan-panel { display:none; }
+  .scan-panel.on { display:block; }
+  #sheetVideo { width:100%; height:100%; object-fit:cover; background:#000; }
   .zoom-row { display:none; align-items:center; gap:8px; padding:0 12px 8px; }
   .zoom-row.on { display:flex; }
   .zoom-row input { flex:1; }
@@ -221,9 +216,10 @@
 <div class="screen" id="scLoc">
   <div class="input-row" style="margin-top:12px">
     <button class="icon-btn" onclick="locSearch(document.getElementById('locQuery').value)">🔍</button>
-    <button class="icon-btn" style="background:#334155" onclick="scanInto('locQuery', 'סרוק מק״ט לחיפוש מיקום', locSearch)" title="סרוק">📷</button>
+    <button class="icon-btn" style="background:#334155" onclick="scanInto('locQuery', 'locCam', locSearch)" title="סרוק">📷</button>
     <input id="locQuery" type="text" inputmode="text" enterkeyhint="search" placeholder="הקלד מק״ט…" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false">
   </div>
+  <div id="locCam"></div>
   <div id="locResult"></div>
 </div>
 
@@ -233,8 +229,9 @@
     <button class="icon-btn" style="width:52px" onclick="recvAdd()">➕</button>
     <input class="field" id="recvQty" style="flex:1;text-align:left" placeholder="QTY" inputmode="decimal">
     <input class="field" id="recvItem" style="flex:2;text-align:left;text-transform:uppercase" placeholder="Item…" autocapitalize="characters">
-    <button class="icon-btn" style="width:52px;background:#334155" onclick="scanInto('recvItem', 'סרוק מק״ט לקבלה', function(){ document.getElementById('recvQty').focus(); })" title="סרוק">📷</button>
+    <button class="icon-btn" style="width:52px;background:#334155" onclick="scanInto('recvItem', 'recvCam', function(){ document.getElementById('recvQty').focus(); })" title="סרוק">📷</button>
   </div>
+  <div id="recvCam"></div>
   <div class="list-hdr">
     <span class="list-title" id="recvTitle">📋 רשימה (0)</span>
     <button class="link-danger" onclick="recvClear()">🗑️</button>
@@ -250,6 +247,7 @@
     <button class="link-danger" style="padding:8px 12px" onclick="chatClear()" title="נקה שיחה">🗑️ נקה</button>
   </div>
   <div id="chatStatus" style="padding:4px 12px;font-size:10px;color:#475569"></div>
+  <div id="chatCam"></div>
   <div id="chatList" style="padding:12px;max-height:calc(100vh - 250px);overflow-y:auto"></div>
   <div style="position:fixed;bottom:78px;left:0;right:0;display:flex;gap:8px;padding:10px 12px;background:#0f172a;border-top:1px solid #1e293b">
     <button class="icon-btn" onclick="chatSend()">➤</button>
@@ -263,14 +261,16 @@
 </div>
 
 <!-- ============ POP-UP SCANNER (מיקום / קבלה / צ׳אט) ============ -->
-<div class="scan-sheet" id="scanSheet">
-  <div class="sheet-bar">
-    <button onclick="closeScanSheet()" title="סגור">✕</button>
-    <span class="t" id="sheetTitle">סרוק ברקוד</span>
-    <button id="sheetTorchBtn" onclick="sheetTorch()" title="פנס">🔦</button>
+<div class="scan-panel" id="scanSheet">
+  <div class="cam-wrap on">
+    <video id="sheetVideo" playsinline muted autoplay></video>
+    <div class="laser"></div>
   </div>
-  <video id="sheetVideo" playsinline muted autoplay></video>
-  <div class="sheet-info" id="sheetInfo"></div>
+  <div class="controls">
+    <button class="scan-btn active" onclick="closeScanSheet()">⏹️ עצור</button>
+    <button class="torch-btn" id="sheetTorchBtn" onclick="sheetTorch()">🔦</button>
+  </div>
+  <div class="cam-info" id="sheetInfo"></div>
 </div>
 
 <!-- ===================== SETTINGS ===================== -->
@@ -354,7 +354,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.7.0';
+var PWA_VERSION = '4.7.1';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -739,11 +739,14 @@ function stopCam(){
 // מיקום / קבלה / צ׳אט scan with the camera too. The same engine runs inside a
 // full-screen sheet and hands the first code it reads back to the caller.
 var scanSheetCb = null;
-function openScanSheet(title, cb){
+function openScanSheet(host, cb){
   if (scanning) stopCam();
   scanSheetCb = cb;
-  $('sheetTitle').textContent = title || 'סרוק ברקוד';
-  $('scanSheet').classList.add('on');
+  // One camera box, parked inside whichever screen opened it
+  var panel = $('scanSheet');
+  var slot = $(host);
+  if (slot && panel.parentNode !== slot) slot.appendChild(panel);
+  panel.classList.add('on');
   $('sheetInfo').textContent = 'מפעיל מצלמה…';
   camVideoEl = $('sheetVideo');
   camDeliver = function(text){
@@ -783,8 +786,8 @@ function sheetTorch(){
 }
 
 // Scan straight into a text field, then run whatever should follow
-function scanInto(inputId, title, after){
-  openScanSheet(title, function(code){
+function scanInto(inputId, host, after){
+  openScanSheet(host, function(code){
     var el = $(inputId);
     el.value = code;
     if (after) after(code);
@@ -793,7 +796,7 @@ function scanInto(inputId, title, after){
 
 // In the chat the code goes into the message box, so a caption can be added
 function scanIntoChat(){
-  openScanSheet('סרוק ברקוד להודעה', function(code){
+  openScanSheet('chatCam', function(code){
     var el = $('chatInput');
     el.value = (el.value ? el.value + ' ' : '') + code;
     el.focus();
