@@ -52,6 +52,19 @@
   .laser { position:absolute; top:50%; left:10%; right:10%; height:2px; background:#ef4444; opacity:.7; pointer-events:none; }
   .cam-info { font-size:10px; color:#64748b; text-align:center; padding:2px 12px 6px; }
 
+  /* מערכות — the three plant screens, as data instead of pages */
+  .sys-pick { display:flex; flex-wrap:wrap; gap:8px; padding:12px; }
+  .sys-pick button { flex:1 1 30%; background:#1e293b; border:1px solid #334155; border-radius:10px;
+                     padding:12px 8px; color:#cbd5e1; font-size:12px; font-weight:700; cursor:pointer; }
+  .sys-pick button.on { background:#1d4ed8; border-color:#2563eb; color:#fff; }
+  .sys-card { background:#1e293b; border:1px solid #334155; border-radius:10px; padding:10px; margin-bottom:8px; }
+  .sys-card .t { font-size:14px; font-weight:800; color:#e2e8f0; }
+  .sys-card .s { font-size:11px; color:#94a3b8; margin-top:2px; }
+  .sys-card .g { display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:6px; }
+  .sys-card .g div { font-size:11px; color:#cbd5e1; }
+  .sys-card .g b { color:#93c5fd; font-weight:700; }
+  .sys-badge { display:inline-block; padding:1px 7px; border-radius:8px; font-size:10px; font-weight:700; }
+
   /* The scanner used by מיקום / קבלה / צ׳אט — the same framed box as the
      סריקה tab, sitting inside the screen rather than covering it */
   .scan-panel { display:none; }
@@ -260,6 +273,17 @@
   </div>
 </div>
 
+<!-- ===================== SYSTEMS (2026-09-08) ===================== -->
+<div class="screen" id="scSys">
+  <div class="sys-pick" id="sysPick"></div>
+  <div class="input-row" id="sysFilterRow" style="display:none">
+    <button class="icon-btn" onclick="sysReload()" title="רענן">🔄</button>
+    <input id="sysFilter" type="text" placeholder="סנן ברשימה…" autocomplete="off" oninput="sysRender()">
+  </div>
+  <div id="sysInfo" style="padding:6px 12px;font-size:11px;color:#64748b"></div>
+  <div id="sysList" style="padding:0 12px 12px"></div>
+</div>
+
 <!-- ============ POP-UP SCANNER (מיקום / קבלה / צ׳אט) ============ -->
 <div class="scan-panel" id="scanSheet">
   <div class="cam-wrap on">
@@ -341,6 +365,7 @@
   <button class="tab" data-tab="loc"><span class="ico">📍</span><span class="txt">מיקום</span></button>
   <button class="tab" data-tab="recv"><span class="ico">📥</span><span class="txt">קבלה</span><span class="dotbadge" id="recvBadge" style="display:none">0</span></button>
   <button class="tab" data-tab="chat"><span class="ico">💬</span><span class="txt">צ׳אט</span><span class="dotbadge" id="chatBadge" style="display:none">0</span></button>
+  <button class="tab" data-tab="sys"><span class="ico">🗂️</span><span class="txt">מערכות</span></button>
   <button class="tab" data-tab="set"><span class="ico">⚙️</span><span class="txt">הגדרות</span></button>
 </div>
 
@@ -354,7 +379,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.8.1';
+var PWA_VERSION = '4.9.0';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -1390,6 +1415,119 @@ function chatSend(){
 }
 $('chatInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') chatSend(); });
 
+// ============ SYSTEMS (2026-09-08, Yoram) ============
+// The three plant screens on the phone. Whole pages cannot travel through the
+// bridge — one page plus its assets is megabytes and every click would cost
+// another round trip — so the phone asks the server for the DATA behind them
+// and draws it itself. A few KB per screen, fast enough over cellular.
+var SYS_SCREENS = [
+  { key: 'inv',  label: '📦 ניהול מלאי',   path: '/api/inventory/records', rows: 60,
+    pick: function(d){ return d.records || []; },
+    title: function(r){ return r.item || ''; },
+    sub:   function(r){ return (r.employeeName || '') + (r.date ? ' · ' + sysDate(r.date) : ''); },
+    facts: function(r){ return [['כמות', r.quantity], ['מ־', r.fromWarehouse], ['אל', r.toWarehouse],
+                                ['מיקום ANB', r.locationANB], ['מלאי MH', r.inventoryMH]]; },
+    hay:   function(r){ return [r.item, r.employeeName, r.fromWarehouse, r.toWarehouse, r.locationANB].join(' '); } },
+
+  { key: 'dft',  label: '🔬 מערכת DFT',   path: '/api/dft/before-run', rows: 80,
+    alt: { label: 'אחרי הרצה', path: '/api/dft/after-run' },
+    pick: function(d){ return d.results || d.data || d.records || d.requests || d.rows || []; },
+    title: function(r){ return r.Item || r.item || ''; },
+    sub:   function(r){ return r.EmployeeName || r.employeeName || r.UserName || r.description || ''; },
+    facts: function(r){ return [['כמות', r.QTY || r.qty], ['מחסן', r.Warehouse || r.warehouse],
+                                ['מיקום', r.Location || r.location]]; },
+    hay:   function(r){ return JSON.stringify(r); } },
+
+  { key: 'buf',  label: '🏬 איחסון חיצוני', path: '/api/buffer-stock/status', rows: 0,
+    pick: function(d){ return d.data || []; },
+    title: function(r){ return r.item || ''; },
+    sub:   function(r){ return r.description || ''; },
+    facts: function(r){ return [['מינימום', r.minQty], ['מקסימום', r.maxQty],
+                                ['בפלקס', r.inFlexQty], ['בחוץ', r.outFlexQty]]; },
+    tag:   function(r){ if (r.blocked) return { t: 'חסום', c: '#7f1d1d' };
+                        if (r.status) return { t: r.status, c: r.status.indexOf('התקבל') >= 0 ? '#14532d' : '#78350f' };
+                        return null; },
+    hay:   function(r){ return [r.item, r.description, r.status].join(' '); } }
+];
+
+var sysCur = null, sysRows = [], sysWaiting = '', sysAltOn = false;
+
+function sysDate(v){
+  var d = new Date(v);
+  return isNaN(d) ? '' : d.toLocaleDateString('he-IL') + ' ' + d.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' });
+}
+
+function renderSysPick(){
+  $('sysPick').innerHTML = SYS_SCREENS.map(function(sc){
+    return '<button class="' + (sysCur && sysCur.key === sc.key ? 'on' : '') + '" onclick="sysOpen(\'' + sc.key + '\')">' +
+      esc(sc.label) + '</button>';
+  }).join('') + (sysCur && sysCur.alt
+    ? '<button class="' + (sysAltOn ? 'on' : '') + '" onclick="sysToggleAlt()">' + esc(sysCur.alt.label) + '</button>'
+    : '');
+}
+
+function sysOpen(key){
+  var sc = SYS_SCREENS.filter(function(x){ return x.key === key; })[0];
+  if (!sc) return;
+  sysCur = sc; sysAltOn = false; sysRows = [];
+  renderSysPick();
+  sysReload();
+}
+
+function sysToggleAlt(){ sysAltOn = !sysAltOn; renderSysPick(); sysReload(); }
+
+function sysReload(){
+  if (!sysCur) return;
+  var token = (cfg.termToken || '').trim();
+  if (!token) { $('sysInfo').textContent = '⚠ חסר קוד גישה — הזן בהגדרות ← חיבור'; return; }
+  var path = (sysAltOn && sysCur.alt) ? sysCur.alt.path : sysCur.path;
+  sysWaiting = path;
+  sysRows = [];
+  $('sysList').innerHTML = '';
+  $('sysFilterRow').style.display = '';
+  $('sysInfo').textContent = '⏳ מבקש נתונים מהשרת…';
+  termUp('command', 'api ' + path + (sysCur.rows ? ' ' + sysCur.rows : ''))
+    .catch(function(){ $('sysInfo').textContent = '❌ אין חיבור ל-n8n'; });
+}
+
+function sysRender(){
+  if (!sysCur) return;
+  var q = ($('sysFilter').value || '').trim().toLowerCase();
+  var list = sysRows;
+  if (q) list = list.filter(function(r){ return String(sysCur.hay(r) || '').toLowerCase().indexOf(q) >= 0; });
+  if (!list.length) { $('sysList').innerHTML = '<div class="empty">אין שורות להצגה</div>'; return; }
+  $('sysList').innerHTML = list.slice(0, 200).map(function(r){
+    var tag = sysCur.tag ? sysCur.tag(r) : null;
+    var facts = (sysCur.facts(r) || []).filter(function(f){ return f[1] !== undefined && f[1] !== null && f[1] !== ''; });
+    return '<div class="sys-card">' +
+      '<div class="t">' + esc(sysCur.title(r)) +
+        (tag ? ' <span class="sys-badge" style="background:' + tag.c + ';color:#fff">' + esc(tag.t) + '</span>' : '') + '</div>' +
+      (sysCur.sub(r) ? '<div class="s">' + esc(sysCur.sub(r)) + '</div>' : '') +
+      (facts.length ? '<div class="g">' + facts.map(function(f){
+          return '<div>' + esc(f[0]) + ': <b>' + esc(String(f[1])) + '</b></div>'; }).join('') + '</div>' : '') +
+      '</div>';
+  }).join('');
+}
+
+// The answer comes back on the same bus the chat uses
+busAdd(function(it){
+  if (!it || !it.text || String(it.text).indexOf('##API##') !== 0) return;
+  var o;
+  try { o = JSON.parse(String(it.text).slice(7)); } catch (e) { return; }
+  if (!sysCur || (sysWaiting && o.path !== sysWaiting)) return;
+  var d;
+  try { d = JSON.parse(o.body); } catch (e) { $('sysInfo').textContent = '❌ תשובה לא תקינה מהשרת'; return; }
+  if (o.status !== 200 || d.success === false) {
+    $('sysInfo').textContent = '❌ ' + (d.error || ('השרת החזיר ' + o.status));
+    $('sysList').innerHTML = '';
+    return;
+  }
+  sysRows = sysCur.pick(d) || [];
+  var shown = sysRows.length + (d.total && d.total > sysRows.length ? ' מתוך ' + d.total : '');
+  $('sysInfo').textContent = shown + ' שורות · עודכן ' + new Date().toLocaleTimeString('he-IL');
+  sysRender();
+});
+
 // ============ SETTINGS ============
 var SETTINGS_PASSWORD = '12622';
 function setUnlock(){
@@ -1490,8 +1628,8 @@ function applyAvatar(){
 }
 
 // ============ TABS ============
-var TAB_TITLES = { scan:'📷 סריקה', dft:'📋 DFT DEMAND', loc:'📍 חיפוש מיקום', recv:'📥 קבלת סחורה', chat:'💬 צ׳אט', set:'⚙️ הגדרות' };
-var TAB_SCREENS = { scan:'scScan', dft:'scDft', loc:'scLoc', recv:'scRecv', chat:'scChat', set:'scSet' };
+var TAB_TITLES = { scan:'📷 סריקה', dft:'📋 DFT DEMAND', loc:'📍 חיפוש מיקום', recv:'📥 קבלת סחורה', chat:'💬 צ׳אט', sys:'🗂️ מערכות', set:'⚙️ הגדרות' };
+var TAB_SCREENS = { scan:'scScan', dft:'scDft', loc:'scLoc', recv:'scRecv', chat:'scChat', sys:'scSys', set:'scSet' };
 var currentScreen = 'scan';   // which tab is open (the paste handler needs it)
 function switchTab(name){
   currentScreen = name;
@@ -1503,6 +1641,7 @@ function switchTab(name){
   if (name !== 'set') { $('setLock').style.display = ''; $('setBody').style.display = 'none'; }
   if (name === 'set') renderSettings();
   if (name === 'chat') { chatUnread = 0; renderChatBadge(); renderChat(); renderChatUsers(); chatPull(); usersPull(); $('chatInput').focus(); }
+  if (name === 'sys') { renderSysPick(); if (!sysCur) $('sysInfo').textContent = 'בחר מערכת'; }
   if (name === 'loc') $('locQuery').focus();
   if (name === 'recv') $('recvItem').focus();
 }

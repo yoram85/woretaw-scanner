@@ -1,4 +1,4 @@
-const CACHE = 'woretaw-scanner-v20260907k';
+const CACHE = 'woretaw-scanner-v20260908';
 // Relative, so the app works both at yoram85.github.io/woretaw-scanner/ and at
 // the root of a custom domain. (2026-09-07)
 const ASSETS = [
