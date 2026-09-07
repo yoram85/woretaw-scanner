@@ -304,7 +304,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.4.0';
+var PWA_VERSION = '4.4.1';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -985,7 +985,15 @@ function chatHandleFile(file){
       if (dataUrl.length > 400000) { toast('❌ הקובץ גדול מדי לשליחה מהטלפון', 'err'); return; }
       toast('⏳ מעלה ' + name + '…');
       termUp('command', 'chatput ' + JSON.stringify({ n: name, t: type, c: caption, to: chatTarget ? chatTarget.odbc : '', d: dataUrl }))
-        .then(function(){ beep(); }).catch(function(){ toast('❌ ההעלאה נכשלה', 'err'); });
+        .then(function(){
+          beep();
+          // Show what was just sent — the server never echoes a message back
+          // to its own sender, so without this nothing appeared. 2026-09-07
+          chatAdd({ id: 'local-' + Date.now(), fromName: cfg.device || 'מסופון', text: caption, mine: true,
+                    priv: !!chatTarget, to: chatTarget ? chatTarget.odbc : null,
+                    file: { name: name, type: type, data: dataUrl } }, false);
+        })
+        .catch(function(){ toast('❌ ההעלאה נכשלה', 'err'); });
     }
     // Photos are shrunk first — a raw phone photo is several MB and would
     // never fit through the queue.
