@@ -1,11 +1,13 @@
-const CACHE = 'woretaw-scanner-v20260907j';
+const CACHE = 'woretaw-scanner-v20260907k';
+// Relative, so the app works both at yoram85.github.io/woretaw-scanner/ and at
+// the root of a custom domain. (2026-09-07)
 const ASSETS = [
-  '/woretaw-scanner/',
-  '/woretaw-scanner/index.html',
-  '/woretaw-scanner/manifest.json',
-  '/woretaw-scanner/html5-qrcode.min.js',
-  '/woretaw-scanner/zxing-reader.js',
-  '/woretaw-scanner/zxing_reader.wasm'
+  './',
+  './index.html',
+  './manifest.json',
+  './html5-qrcode.min.js',
+  './zxing-reader.js',
+  './zxing_reader.wasm'
 ];
 
 // Install — cache all assets
