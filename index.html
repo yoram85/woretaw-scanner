@@ -304,7 +304,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.3.0';
+var PWA_VERSION = '4.4.0';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -788,19 +788,23 @@ function renderChat(){
     : !m.priv; });
   if (!shown.length) { el.innerHTML = '<div class="empty">' + (chatTarget ? 'אין עדיין הודעות עם ' + esc(chatTarget.name) : 'אין הודעות עדיין — כתוב משהו לצוות') + '</div>'; return; }
   var me = cfg.device || 'מסופון';
+  // WhatsApp layout (2026-09-07, Yoram): my messages on one side, everyone
+  // else's on the other. direction:ltr on the row makes the side explicit.
   el.innerHTML = shown.slice(-100).map(function(m){
     var mine = m.mine || String(m.fromName || '') === me;
     var t = new Date(m.timestamp);
-    return '<div style="display:flex;gap:8px;margin-bottom:10px;' + (mine ? 'flex-direction:row-reverse' : '') + '">' +
-      '<div style="width:28px;height:28px;border-radius:50%;background:#334155;color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">' +
-      esc(String(m.fromName || '?').trim().charAt(0)) + '</div>' +
-      '<div style="max-width:78%;background:' + (mine ? '#1d4ed8' : '#1e293b') + ';border:1px solid ' + (mine ? '#2563eb' : '#334155') +
-      ';border-radius:12px;padding:8px 10px">' +
-        '<div style="font-size:10px;color:' + (mine ? '#bfdbfe' : '#64748b') + ';margin-bottom:2px">' + esc(m.fromName) +
-        (m.isTerminal ? ' · מסופון' : '') + (m.priv ? ' · פרטי' : '') + '</div>' +
-        (m.text ? '<div style="font-size:13px;line-height:1.5;white-space:pre-wrap">' + esc(m.text) + '</div>' : '') +
+    return '<div style="display:flex;direction:ltr;gap:8px;margin-bottom:10px;justify-content:' +
+      (mine ? 'flex-start' : 'flex-end') + '">' +
+      (mine ? '' : '<div style="width:28px;height:28px;border-radius:50%;background:#334155;color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;order:2">' +
+        esc(String(m.fromName || '?').trim().charAt(0)) + '</div>') +
+      '<div style="direction:rtl;text-align:right;max-width:78%;background:' + (mine ? '#005c4b' : '#1f2c34') +
+      ';border:1px solid ' + (mine ? '#046a56' : '#2a3942') + ';padding:7px 10px;border-radius:12px;' +
+      (mine ? 'border-bottom-left-radius:3px' : 'border-bottom-right-radius:3px') + '">' +
+        (mine ? '' : '<div style="font-size:10px;font-weight:700;color:#53bdeb;margin-bottom:2px">' + esc(m.fromName) +
+          (m.isTerminal ? ' · מסופון' : '') + (m.priv ? ' · פרטי' : '') + '</div>') +
+        (m.text ? '<div style="font-size:13px;line-height:1.5;color:#e9edef;white-space:pre-wrap">' + esc(m.text) + '</div>' : '') +
         (m.file ? chatFileHtml(m.file, m.id) : '') +
-        '<div style="font-size:9px;color:' + (mine ? '#93c5fd' : '#475569') + ';margin-top:3px;text-align:left">' +
+        '<div style="font-size:9px;color:#8696a0;margin-top:3px;text-align:left;direction:ltr">' +
           (isNaN(t) ? '' : t.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' })) + '</div>' +
       '</div></div>';
   }).join('');
@@ -880,24 +884,53 @@ function imgZoom(src){
 
 // Attachments: the job queue only carries a reference, so the bytes are
 // fetched from the plant server (through the bridge) on demand.
+// Files already saved on this device — a second click opens the file instead
+// of saving another copy. 2026-09-07 (Yoram).
+var savedFiles = LS.get('wpwaSavedFiles', {});
+function fileSaved(id){ return !!(id && savedFiles[id]); }
+function markFileSaved(id){
+  if (!id || savedFiles[id]) return;
+  savedFiles[id] = Date.now();
+  LS.set('wpwaSavedFiles', savedFiles);
+  setTimeout(renderChat, 400);
+}
+// A data: URL cannot be opened in a tab, a blob: URL can
+function openStoredFile(id){
+  var m = null;
+  for (var i = chatMsgs.length - 1; i >= 0; i--) { if (chatMsgs[i].file && chatMsgs[i].file.id === id) { m = chatMsgs[i]; break; } }
+  if (!m || !m.file || !m.file.data) { toast('הקובץ כבר לא בזיכרון — הורד שוב', 'err'); return; }
+  if (String(m.file.type || '').indexOf('image/') === 0) { imgZoom(m.file.data); return; }
+  try {
+    var parts = String(m.file.data).split(',');
+    var bin = atob(parts[1] || '');
+    var arr = new Uint8Array(bin.length);
+    for (var j = 0; j < bin.length; j++) arr[j] = bin.charCodeAt(j);
+    var url = URL.createObjectURL(new Blob([arr], { type: m.file.type || 'application/octet-stream' }));
+    window.open(url, '_blank');
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
+  } catch (e) { toast('לא ניתן לפתוח את הקובץ', 'err'); }
+}
+
 function chatFileHtml(f, msgId){
   if (!f) return '';
   var isImg = String(f.type || '').indexOf('image/') === 0;
   if (f.data) {
-    // A download link on every file — an image too, so it can be saved to the
-    // phone instead of only being previewed. (2026-09-06, Yoram)
-    var link = '<a href="' + esc(f.data) + '" download="' + esc(f.name || 'file') +
-      '" style="display:inline-block;margin-top:6px;color:#93c5fd;font-size:12px">📎 ' +
-      (isImg ? 'שמור · ' : '') + esc(f.name || 'קובץ') + '</a>';
+    var done = fileSaved(f.id);
+    var link = done
+      ? '<span onclick="openStoredFile(\'' + esc(f.id || '') + '\')" style="display:inline-block;margin-top:6px;color:#53bdeb;font-size:12px;cursor:pointer">📎 נשמר ✓ · פתח · ' + esc(f.name || 'קובץ') + '</span>'
+      : '<a href="' + esc(f.data) + '" download="' + esc(f.name || 'file') + '"' +
+        (f.id ? ' onclick="markFileSaved(\'' + esc(f.id) + '\')"' : '') +
+        ' style="display:inline-block;margin-top:6px;color:#53bdeb;font-size:12px">📎 ' +
+        (isImg ? 'שמור · ' : '') + esc(f.name || 'קובץ') + '</a>';
     return isImg
       ? '<img src="' + esc(f.data) + '" onclick="imgZoom(this.src)" style="max-width:100%;border-radius:8px;margin-top:6px;cursor:zoom-in" alt=""><br>' + link
       : link;
   }
   if (f.id) {
     return '<div style="margin-top:6px"><span onclick="chatFileGet(\'' + esc(f.id) + '\')" ' +
-      'style="color:#93c5fd;font-size:12px;cursor:pointer">📎 ' + esc(f.name || 'קובץ') + ' — הורד</span></div>';
+      'style="color:#53bdeb;font-size:12px;cursor:pointer">📎 ' + esc(f.name || 'קובץ') + ' — הורד</span></div>';
   }
-  return '<div style="margin-top:6px;color:#93c5fd;font-size:12px">📎 ' + esc(f.name || 'קובץ') + '</div>';
+  return '<div style="margin-top:6px;color:#53bdeb;font-size:12px">📎 ' + esc(f.name || 'קובץ') + '</div>';
 }
 function chatFileGet(fileId){
   toast('⏳ מוריד…');
