@@ -354,7 +354,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.7.1';
+var PWA_VERSION = '4.8.0';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -518,8 +518,10 @@ var camEngine = '', wasmMod = null, probeTimer = 0, decodeCanvas = null;
 // מיקום / קבלה / צ׳אט — only the video element and the destination change.
 var camVideoEl = null, camDeliver = null;
 // Same barcode set the APK asks ML Kit for, plus a few harmless extras
-var NATIVE_FORMATS = ['code_128','code_39','code_93','codabar','ean_13','ean_8','itf','upc_a','upc_e','qr_code','data_matrix','pdf417','aztec'];
-var WASM_FORMATS = ['Code128','Code39','Code93','Codabar','EAN-13','EAN-8','ITF','UPC-A','UPC-E','QRCode','DataMatrix','PDF417','Aztec'];
+// Code 128 and Code 39 only (Yoram, 2026-09-07) — fewer symbologies means
+// a faster decode per frame and no chance of a lookalike being misread.
+var NATIVE_FORMATS = ['code_128','code_39'];
+var WASM_FORMATS = ['Code128','Code39'];
 
 function camInfo(t){ $('camInfo').textContent = t || ''; }
 
@@ -705,12 +707,7 @@ function startZxingJs(){
     experimentalFeatures: { useBarCodeDetectorIfSupported: true },
     videoConstraints: { facingMode: { ideal: cfg.camera || 'environment' },
                         width: { ideal: 1920 }, height: { ideal: 1080 } },
-    formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
-      Html5QrcodeSupportedFormats.CODE_93, Html5QrcodeSupportedFormats.CODABAR,
-      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
-      Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
-      Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.DATA_MATRIX,
-      Html5QrcodeSupportedFormats.ITF, Html5QrcodeSupportedFormats.PDF_417]
+    formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39]
   };
   scanner.start({ facingMode: cfg.camera || 'environment' }, conf, function(t){ doScan(t); }, function(){})
     .then(function(){
