@@ -385,7 +385,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.11.0';
+var PWA_VERSION = '4.11.1';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -1571,10 +1571,21 @@ function sysFace(r){
     esc(sysInitials(r.name)) + '</div>';
   return '<div class="sys-face" style="cursor:default">' + esc(sysInitials(r.name)) + '</div>';
 }
+var sysPhotoWait = '';
 function sysGetPhoto(id){
   if (!id || sysPhotos[id]) return;
+  sysPhotoWait = String(id);
   $('sysInfo').textContent = '⏳ מוריד תמונה…';
-  termUp('command', 'empphoto ' + id).catch(function(){ $('sysInfo').textContent = '❌ אין חיבור'; });
+  if (sysTimer) clearTimeout(sysTimer);
+  sysTimer = setTimeout(function(){
+    if (!sysPhotoWait) return;
+    sysPhotoWait = '';
+    $('sysInfo').textContent = '❌ התמונה לא הגיעה. ודא שהשרת עודכן והופעל מחדש.';
+  }, 40000);
+  termUp('command', 'empphoto ' + id).catch(function(){
+    sysPhotoWait = ''; clearTimeout(sysTimer);
+    $('sysInfo').textContent = '❌ אין חיבור';
+  });
 }
 
 function sysOnType(){ if (!sysCur || !sysCur.search) sysRender(); }
@@ -1606,16 +1617,23 @@ busAdd(function(it){
   // Anything else that lands while a screen is waiting is the server telling us
   // why it cannot answer — show it instead of leaving "מבקש נתונים" on screen.
   if (raw.indexOf('##PHOTO##') === 0) {
+    sysPhotoWait = ''; if (sysTimer) clearTimeout(sysTimer);
     try {
       var ph = JSON.parse(raw.slice(9));
       sysPhotos[ph.id] = ph.data;
       LS.set('wpwaSysPhotos', sysPhotos);
       $('sysInfo').textContent = 'תמונה נטענה';
       sysRender();
-    } catch (e) {}
+    } catch (e) { $('sysInfo').textContent = '❌ התמונה הגיעה פגומה'; }
     return;
   }
   if (raw.indexOf('##API##') !== 0) {
+    // A plain answer while waiting for a picture is the server saying why
+    if (sysPhotoWait && raw.indexOf('##') !== 0 && it.kind !== 'chat') {
+      sysPhotoWait = ''; if (sysTimer) clearTimeout(sysTimer);
+      $('sysInfo').textContent = raw.slice(0, 220);
+      return;
+    }
     if (!sysWaiting || raw.indexOf('##') === 0 || it.kind === 'chat') return;
     sysWaiting = ''; if (sysTimer) clearTimeout(sysTimer);
     $('sysInfo').textContent = raw.slice(0, 220);
