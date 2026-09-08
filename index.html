@@ -380,7 +380,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.10.0';
+var PWA_VERSION = '4.10.1';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -1454,7 +1454,7 @@ var SYS_SCREENS = [
     pick: function(d){ return d.data || []; },
     title: function(r){ return r.name || ''; },
     sub:   function(r){ return 'מספר עובד: ' + (r.id || ''); },
-    facts: function(r){ return [['מחלקה', r.department], ['תפקיד', r.profession]]; },
+    facts: function(r){ return [['מחלקה', r.department], ['תפקיד', r.profession], ['אתר', r.site]]; },
     hay:   function(r){ return [r.id, r.name, r.department, r.profession].join(' '); } }
 ];
 
