@@ -385,7 +385,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.11.1';
+var PWA_VERSION = '4.12.0';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -1460,7 +1460,9 @@ var SYS_SCREENS = [
     title: function(r){ return r.name || ''; },
     sub:   function(r){ return 'מספר עובד: ' + (r.id || ''); },
     facts: function(r){ return [['מחלקה', r.department], ['תפקיד', r.profession], ['אתר', r.site]]; },
-    hay:   function(r){ return [r.id, r.name, r.department, r.profession].join(' '); } }
+    hay:   function(r){ return [r.id, r.name, r.department, r.profession].join(' '); } },
+
+  { key: 'lbl', label: '🖨️ מדבקות מיקום', path: '/lbl', form: true }
 ];
 
 // The last answer of every screen is kept, so opening the tab shows what you
@@ -1511,9 +1513,16 @@ function sysOpen(key){
   if (!sc) return;
   sysCur = sc; sysAltOn = false; sysRows = [];
   $('sysList').innerHTML = '';
-  $('sysFilter').placeholder = sc.search ? 'שם או מספר עובד…' : 'סנן ברשימה…';
-  if (sc.search) $('sysFilter').value = '';
+  $('sysFilter').placeholder = sc.form ? 'מק״ט להדפסה…' : (sc.search ? 'שם או מספר עובד…' : 'סנן ברשימה…');
+  if (sc.search || sc.form) $('sysFilter').value = '';
   renderSysPick();
+  if (sc.form) {
+    lblItem = null; lblLoc = ''; lblQty = 1;
+    $('sysFilterRow').style.display = '';
+    $('sysInfo').textContent = 'הקלד או סרוק מק״ט';
+    lblRender();
+    return;
+  }
   sysShowCachedOr(function(){
     if (sc.search) { $('sysFilterRow').style.display = ''; $('sysInfo').textContent = 'הקלד שם או מספר עובד ולחץ 🔄'; return; }
     sysReload();
@@ -1528,6 +1537,7 @@ function sysToggleAlt(){
 
 function sysReload(){
   if (!sysCur) return;
+  if (sysCur.form) { lblFind(); return; }
   var token = (cfg.termToken || '').trim();
   if (!token) { $('sysInfo').textContent = '⚠ חסר קוד גישה — הזן בהגדרות ← חיבור'; return; }
   var path = (sysAltOn && sysCur.alt) ? sysCur.alt.path : sysCur.path;
@@ -1588,6 +1598,84 @@ function sysGetPhoto(id){
   });
 }
 
+// ===== מדבקות מיקום (2026-09-08, Yoram) =====
+// Not a list but a small form: find the item, pick a location, set how many,
+// print. Printing is a physical action, so it always asks first.
+var lblItem = null, lblLoc = '', lblQty = 1;
+
+function lblRender(){
+  var box = $('sysList');
+  if (!lblItem) {
+    box.innerHTML = '<div class="sys-card"><div class="s">הקלד או סרוק מק״ט ולחץ 🔍</div></div>';
+    return;
+  }
+  var locs = lblItem.locations || [];
+  box.innerHTML =
+    '<div class="sys-card">' +
+      '<div class="t">' + esc(lblItem.item) + '</div>' +
+      '<div class="s">' + esc(lblItem.description || '') + '</div>' +
+    '</div>' +
+    '<div class="sys-card">' +
+      '<div class="s" style="margin-bottom:6px">מיקום להדפסה</div>' +
+      (locs.length
+        ? '<div style="display:flex;flex-wrap:wrap;gap:6px">' + locs.map(function(l){
+            var on = lblLoc === l.location;
+            return '<span onclick="lblPick(\'' + esc(l.location) + '\')" style="cursor:pointer;padding:7px 11px;border-radius:9px;font-size:12px;font-weight:700;' +
+              (on ? 'background:#1d4ed8;color:#fff' : 'background:#0f172a;color:#cbd5e1;border:1px solid #334155') + '">' +
+              esc(l.location) + (l.warehouse ? ' <span style="opacity:.7;font-weight:400">' + esc(l.warehouse) + '</span>' : '') +
+              (l.fixed ? ' <span style="opacity:.7;font-weight:400">קבע</span>' : '') + '</span>';
+          }).join('') + '</div>'
+        : '<div class="s">אין מיקומים לפריט — הקלד ידנית</div>') +
+      '<input id="lblLocManual" class="field" placeholder="או הקלד מיקום…" value="' + esc(lblLoc) + '" ' +
+        'oninput="lblLoc=this.value.trim().toUpperCase()" style="margin-top:8px;width:100%;box-sizing:border-box">' +
+    '</div>' +
+    '<div class="sys-card">' +
+      '<div class="s" style="margin-bottom:6px">כמות מדבקות</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+        [1,2,3,5,10].map(function(n){
+          return '<span onclick="lblSetQty(' + n + ')" style="cursor:pointer;padding:7px 13px;border-radius:9px;font-size:13px;font-weight:700;' +
+            (lblQty === n ? 'background:#1d4ed8;color:#fff' : 'background:#0f172a;color:#cbd5e1;border:1px solid #334155') + '">' + n + '</span>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+    '<div onclick="lblPrint()" style="background:#16a34a;color:#fff;text-align:center;padding:14px;border-radius:10px;' +
+      'font-weight:800;font-size:15px;cursor:pointer">🖨️ הדפס ' + lblQty + ' מדבקות</div>';
+}
+
+function lblPick(loc){ lblLoc = loc; lblRender(); }
+function lblSetQty(n){ lblQty = n; lblRender(); }
+
+function lblFind(){
+  var code = ($('sysFilter').value || '').trim();
+  if (code.length < 2) { $('sysInfo').textContent = 'הקלד מק״ט'; return; }
+  lblItem = null; lblLoc = ''; lblRender();
+  sysWaiting = '/lbl';
+  $('sysInfo').textContent = '⏳ מחפש פריט…';
+  if (sysTimer) clearTimeout(sysTimer);
+  sysTimer = setTimeout(function(){
+    if (sysWaiting !== '/lbl') return;
+    sysWaiting = '';
+    $('sysInfo').textContent = '❌ לא התקבלה תשובה מהשרת';
+  }, 40000);
+  termUp('command', 'lblfind ' + code).catch(function(){ sysWaiting=''; $('sysInfo').textContent = '❌ אין חיבור'; });
+}
+
+function lblPrint(){
+  if (!lblItem) return;
+  if (!lblLoc) { $('sysInfo').textContent = 'בחר מיקום'; return; }
+  if (!confirm('להדפיס ' + lblQty + ' מדבקות?\n' + lblItem.item + ' · ' + lblLoc)) return;
+  var job = { i: lblItem.item, d: lblItem.description, l: lblLoc, q: lblQty };
+  sysWaiting = '/lblprint';
+  $('sysInfo').textContent = '⏳ שולח למדפסת…';
+  if (sysTimer) clearTimeout(sysTimer);
+  sysTimer = setTimeout(function(){
+    if (sysWaiting !== '/lblprint') return;
+    sysWaiting = '';
+    $('sysInfo').textContent = '❌ אין אישור מהמדפסת — בדוק מול השרת';
+  }, 40000);
+  termUp('command', 'lblprint ' + JSON.stringify(job)).catch(function(){ sysWaiting=''; $('sysInfo').textContent = '❌ אין חיבור'; });
+}
+
 function sysOnType(){ if (!sysCur || !sysCur.search) sysRender(); }
 
 function sysRender(){
@@ -1641,6 +1729,16 @@ busAdd(function(it){
   }
   var o;
   try { o = JSON.parse(raw.slice(7)); } catch (e) { return; }
+  if (o.path === '/lbl') {
+    sysWaiting = ''; if (sysTimer) clearTimeout(sysTimer);
+    try {
+      var li = JSON.parse(o.body);
+      lblItem = li; lblLoc = (li.locations && li.locations[0]) ? li.locations[0].location : '';
+      $('sysInfo').textContent = 'נמצא — בחר מיקום וכמות';
+      lblRender();
+    } catch (e) { $('sysInfo').textContent = '❌ תשובה לא תקינה'; }
+    return;
+  }
   if (!sysCur || (sysWaiting && o.path !== sysWaiting)) return;
   sysWaiting = ''; if (sysTimer) clearTimeout(sysTimer);
   var d;
