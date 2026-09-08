@@ -379,7 +379,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.9.0';
+var PWA_VERSION = '4.9.1';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -1450,7 +1450,7 @@ var SYS_SCREENS = [
     hay:   function(r){ return [r.item, r.description, r.status].join(' '); } }
 ];
 
-var sysCur = null, sysRows = [], sysWaiting = '', sysAltOn = false;
+var sysCur = null, sysRows = [], sysWaiting = '', sysAltOn = false, sysTimer = 0;
 
 function sysDate(v){
   var d = new Date(v);
@@ -1486,8 +1486,15 @@ function sysReload(){
   $('sysList').innerHTML = '';
   $('sysFilterRow').style.display = '';
   $('sysInfo').textContent = '⏳ מבקש נתונים מהשרת…';
+  // Never wait forever: if nothing comes back, say what is most likely wrong.
+  if (sysTimer) clearTimeout(sysTimer);
+  sysTimer = setTimeout(function(){
+    if (!sysWaiting) return;
+    sysWaiting = '';
+    $('sysInfo').textContent = '❌ לא התקבלה תשובה. בדוק שהשרת עודכן (woretaw-systems.zip) והופעל מחדש, ושהגשר פועל.';
+  }, 40000);
   termUp('command', 'api ' + path + (sysCur.rows ? ' ' + sysCur.rows : ''))
-    .catch(function(){ $('sysInfo').textContent = '❌ אין חיבור ל-n8n'; });
+    .catch(function(){ sysWaiting = ''; clearTimeout(sysTimer); $('sysInfo').textContent = '❌ אין חיבור ל-n8n'; });
 }
 
 function sysRender(){
@@ -1511,10 +1518,20 @@ function sysRender(){
 
 // The answer comes back on the same bus the chat uses
 busAdd(function(it){
-  if (!it || !it.text || String(it.text).indexOf('##API##') !== 0) return;
+  if (!it || !it.text) return;
+  var raw = String(it.text);
+  // Anything else that lands while a screen is waiting is the server telling us
+  // why it cannot answer — show it instead of leaving "מבקש נתונים" on screen.
+  if (raw.indexOf('##API##') !== 0) {
+    if (!sysWaiting || raw.indexOf('##') === 0 || it.kind === 'chat') return;
+    sysWaiting = ''; if (sysTimer) clearTimeout(sysTimer);
+    $('sysInfo').textContent = raw.slice(0, 220);
+    return;
+  }
   var o;
-  try { o = JSON.parse(String(it.text).slice(7)); } catch (e) { return; }
+  try { o = JSON.parse(raw.slice(7)); } catch (e) { return; }
   if (!sysCur || (sysWaiting && o.path !== sysWaiting)) return;
+  sysWaiting = ''; if (sysTimer) clearTimeout(sysTimer);
   var d;
   try { d = JSON.parse(o.body); } catch (e) { $('sysInfo').textContent = '❌ תשובה לא תקינה מהשרת'; return; }
   if (o.status !== 200 || d.success === false) {
