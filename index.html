@@ -64,6 +64,11 @@
   .sys-card .g div { font-size:11px; color:#cbd5e1; }
   .sys-card .g b { color:#93c5fd; font-weight:700; }
   .sys-badge { display:inline-block; padding:1px 7px; border-radius:8px; font-size:10px; font-weight:700; }
+  .sys-face { width:46px; height:46px; border-radius:50%; object-fit:cover; background:#334155; color:#94a3b8;
+              display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:800;
+              flex-shrink:0; cursor:pointer; border:1px solid #475569; }
+  .sys-row { display:flex; flex-direction:row-reverse; gap:10px; align-items:flex-start; }
+  .sys-row > div:last-child { flex:1; min-width:0; }
 
   /* The scanner used by מיקום / קבלה / צ׳אט — the same framed box as the
      סריקה tab, sitting inside the screen rather than covering it */
@@ -380,7 +385,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.10.1';
+var PWA_VERSION = '4.11.0';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -1450,7 +1455,7 @@ var SYS_SCREENS = [
                         return null; },
     hay:   function(r){ return [r.item, r.description, r.status].join(' '); } },
 
-  { key: 'emp', label: '👤 חיפוש עובד', path: '/emp', rows: 0, search: true,
+  { key: 'emp', label: '👤 חיפוש עובד', path: '/emp', rows: 0, search: true, face: true,
     pick: function(d){ return d.data || []; },
     title: function(r){ return r.name || ''; },
     sub:   function(r){ return 'מספר עובד: ' + (r.id || ''); },
@@ -1551,6 +1556,27 @@ function sysReload(){
 }
 
 // On a search screen the box is the query, not a local filter
+// A face for the employee cards. The list only says whether a picture exists;
+// the picture itself is fetched when you tap, one at a time — sending 60 photos
+// through the bridge would be several megabytes. 2026-09-08 (Yoram)
+var sysPhotos = LS.get('wpwaSysPhotos', {});
+function sysInitials(name){
+  var parts = String(name || '').trim().split(/\s+/);
+  return ((parts[0] || '')[0] || '') + ((parts[1] || '')[0] || '');
+}
+function sysFace(r){
+  var got = sysPhotos[r.id];
+  if (got) return '<img class="sys-face" src="' + esc(got) + '" alt="">';
+  if (r.photo) return '<div class="sys-face" onclick="sysGetPhoto(\'' + esc(String(r.id)) + '\')" title="הצג תמונה">' +
+    esc(sysInitials(r.name)) + '</div>';
+  return '<div class="sys-face" style="cursor:default">' + esc(sysInitials(r.name)) + '</div>';
+}
+function sysGetPhoto(id){
+  if (!id || sysPhotos[id]) return;
+  $('sysInfo').textContent = '⏳ מוריד תמונה…';
+  termUp('command', 'empphoto ' + id).catch(function(){ $('sysInfo').textContent = '❌ אין חיבור'; });
+}
+
 function sysOnType(){ if (!sysCur || !sysCur.search) sysRender(); }
 
 function sysRender(){
@@ -1562,13 +1588,14 @@ function sysRender(){
   $('sysList').innerHTML = list.slice(0, 200).map(function(r){
     var tag = sysCur.tag ? sysCur.tag(r) : null;
     var facts = (sysCur.facts(r) || []).filter(function(f){ return f[1] !== undefined && f[1] !== null && f[1] !== ''; });
-    return '<div class="sys-card">' +
+    var inner =
       '<div class="t">' + esc(sysCur.title(r)) +
         (tag ? ' <span class="sys-badge" style="background:' + tag.c + ';color:#fff">' + esc(tag.t) + '</span>' : '') + '</div>' +
       (sysCur.sub(r) ? '<div class="s">' + esc(sysCur.sub(r)) + '</div>' : '') +
       (facts.length ? '<div class="g">' + facts.map(function(f){
-          return '<div>' + esc(f[0]) + ': <b>' + esc(String(f[1])) + '</b></div>'; }).join('') + '</div>' : '') +
-      '</div>';
+          return '<div>' + esc(f[0]) + ': <b>' + esc(String(f[1])) + '</b></div>'; }).join('') + '</div>' : '');
+    if (!sysCur.face) return '<div class="sys-card">' + inner + '</div>';
+    return '<div class="sys-card"><div class="sys-row">' + sysFace(r) + '<div>' + inner + '</div></div></div>';
   }).join('');
 }
 
@@ -1578,6 +1605,16 @@ busAdd(function(it){
   var raw = String(it.text);
   // Anything else that lands while a screen is waiting is the server telling us
   // why it cannot answer — show it instead of leaving "מבקש נתונים" on screen.
+  if (raw.indexOf('##PHOTO##') === 0) {
+    try {
+      var ph = JSON.parse(raw.slice(9));
+      sysPhotos[ph.id] = ph.data;
+      LS.set('wpwaSysPhotos', sysPhotos);
+      $('sysInfo').textContent = 'תמונה נטענה';
+      sysRender();
+    } catch (e) {}
+    return;
+  }
   if (raw.indexOf('##API##') !== 0) {
     if (!sysWaiting || raw.indexOf('##') === 0 || it.kind === 'chat') return;
     sysWaiting = ''; if (sysTimer) clearTimeout(sysTimer);
