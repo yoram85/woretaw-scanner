@@ -278,7 +278,8 @@
   <div class="sys-pick" id="sysPick"></div>
   <div class="input-row" id="sysFilterRow" style="display:none">
     <button class="icon-btn" onclick="sysReload()" title="רענן">🔄</button>
-    <input id="sysFilter" type="text" placeholder="סנן ברשימה…" autocomplete="off" oninput="sysRender()">
+    <input id="sysFilter" type="text" placeholder="סנן ברשימה…" autocomplete="off"
+           oninput="sysOnType()" onkeydown="if(event.key==='Enter') sysReload()">
   </div>
   <div id="sysInfo" style="padding:6px 12px;font-size:11px;color:#64748b"></div>
   <div id="sysList" style="padding:0 12px 12px"></div>
@@ -379,7 +380,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.9.2';
+var PWA_VERSION = '4.10.0';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -1447,7 +1448,14 @@ var SYS_SCREENS = [
     tag:   function(r){ if (r.blocked) return { t: 'חסום', c: '#7f1d1d' };
                         if (r.status) return { t: r.status, c: r.status.indexOf('התקבל') >= 0 ? '#14532d' : '#78350f' };
                         return null; },
-    hay:   function(r){ return [r.item, r.description, r.status].join(' '); } }
+    hay:   function(r){ return [r.item, r.description, r.status].join(' '); } },
+
+  { key: 'emp', label: '👤 חיפוש עובד', path: '/emp', rows: 0, search: true,
+    pick: function(d){ return d.data || []; },
+    title: function(r){ return r.name || ''; },
+    sub:   function(r){ return 'מספר עובד: ' + (r.id || ''); },
+    facts: function(r){ return [['מחלקה', r.department], ['תפקיד', r.profession]]; },
+    hay:   function(r){ return [r.id, r.name, r.department, r.profession].join(' '); } }
 ];
 
 // The last answer of every screen is kept, so opening the tab shows what you
@@ -1498,8 +1506,13 @@ function sysOpen(key){
   if (!sc) return;
   sysCur = sc; sysAltOn = false; sysRows = [];
   $('sysList').innerHTML = '';
+  $('sysFilter').placeholder = sc.search ? 'שם או מספר עובד…' : 'סנן ברשימה…';
+  if (sc.search) $('sysFilter').value = '';
   renderSysPick();
-  sysShowCachedOr(sysReload);
+  sysShowCachedOr(function(){
+    if (sc.search) { $('sysFilterRow').style.display = ''; $('sysInfo').textContent = 'הקלד שם או מספר עובד ולחץ 🔄'; return; }
+    sysReload();
+  });
 }
 
 function sysToggleAlt(){
@@ -1513,6 +1526,14 @@ function sysReload(){
   var token = (cfg.termToken || '').trim();
   if (!token) { $('sysInfo').textContent = '⚠ חסר קוד גישה — הזן בהגדרות ← חיבור'; return; }
   var path = (sysAltOn && sysCur.alt) ? sysCur.alt.path : sysCur.path;
+  var cmd;
+  if (sysCur.search) {
+    var q = ($('sysFilter').value || '').trim();
+    if (q.length < 2) { $('sysInfo').textContent = 'הקלד לפחות 2 תווים'; return; }
+    cmd = 'emp ' + q;
+  } else {
+    cmd = 'api ' + path + (sysCur.rows ? ' ' + sysCur.rows : '');
+  }
   sysWaiting = path;
   sysRows = [];
   $('sysList').innerHTML = '';
@@ -1525,15 +1546,18 @@ function sysReload(){
     sysWaiting = '';
     $('sysInfo').textContent = '❌ לא התקבלה תשובה. בדוק שהשרת עודכן (woretaw-systems.zip) והופעל מחדש, ושהגשר פועל.';
   }, 40000);
-  termUp('command', 'api ' + path + (sysCur.rows ? ' ' + sysCur.rows : ''))
+  termUp('command', cmd)
     .catch(function(){ sysWaiting = ''; clearTimeout(sysTimer); $('sysInfo').textContent = '❌ אין חיבור ל-n8n'; });
 }
+
+// On a search screen the box is the query, not a local filter
+function sysOnType(){ if (!sysCur || !sysCur.search) sysRender(); }
 
 function sysRender(){
   if (!sysCur) return;
   var q = ($('sysFilter').value || '').trim().toLowerCase();
   var list = sysRows;
-  if (q) list = list.filter(function(r){ return String(sysCur.hay(r) || '').toLowerCase().indexOf(q) >= 0; });
+  if (q && !sysCur.search) list = list.filter(function(r){ return String(sysCur.hay(r) || '').toLowerCase().indexOf(q) >= 0; });
   if (!list.length) { $('sysList').innerHTML = '<div class="empty">אין שורות להצגה</div>'; return; }
   $('sysList').innerHTML = list.slice(0, 200).map(function(r){
     var tag = sysCur.tag ? sysCur.tag(r) : null;
