@@ -379,7 +379,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.9.1';
+var PWA_VERSION = '4.9.2';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -1450,6 +1450,10 @@ var SYS_SCREENS = [
     hay:   function(r){ return [r.item, r.description, r.status].join(' '); } }
 ];
 
+// The last answer of every screen is kept, so opening the tab shows what you
+// already pulled instead of an empty list — and it survives closing the app.
+// Only the 🔄 button goes back to the server. 2026-09-08 (Yoram)
+var sysCache = LS.get('wpwaSysCache', {});
 var sysCur = null, sysRows = [], sysWaiting = '', sysAltOn = false, sysTimer = 0;
 
 function sysDate(v){
@@ -1466,15 +1470,43 @@ function renderSysPick(){
     : '');
 }
 
+function sysPath(){ return (sysAltOn && sysCur && sysCur.alt) ? sysCur.alt.path : (sysCur ? sysCur.path : ''); }
+
+function sysSave(path, rows){
+  sysCache[path] = { rows: rows, at: Date.now() };
+  LS.set('wpwaSysCache', sysCache);
+}
+
+// Show what is already in hand; only fetch when there is nothing yet
+function sysShowCachedOr(load){
+  var path = sysPath();
+  var c = sysCache[path];
+  $('sysFilterRow').style.display = '';
+  if (c && c.rows && c.rows.length) {
+    sysRows = c.rows;
+    $('sysInfo').textContent = sysRows.length + ' שורות · נשמר ' +
+      new Date(c.at).toLocaleString('he-IL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) +
+      ' · לחץ 🔄 לרענון';
+    sysRender();
+    return;
+  }
+  load();
+}
+
 function sysOpen(key){
   var sc = SYS_SCREENS.filter(function(x){ return x.key === key; })[0];
   if (!sc) return;
   sysCur = sc; sysAltOn = false; sysRows = [];
+  $('sysList').innerHTML = '';
   renderSysPick();
-  sysReload();
+  sysShowCachedOr(sysReload);
 }
 
-function sysToggleAlt(){ sysAltOn = !sysAltOn; renderSysPick(); sysReload(); }
+function sysToggleAlt(){
+  sysAltOn = !sysAltOn; sysRows = []; $('sysList').innerHTML = '';
+  renderSysPick();
+  sysShowCachedOr(sysReload);
+}
 
 function sysReload(){
   if (!sysCur) return;
@@ -1540,6 +1572,7 @@ busAdd(function(it){
     return;
   }
   sysRows = sysCur.pick(d) || [];
+  sysSave(o.path, sysRows);
   var shown = sysRows.length + (d.total && d.total > sysRows.length ? ' מתוך ' + d.total : '');
   $('sysInfo').textContent = shown + ' שורות · עודכן ' + new Date().toLocaleTimeString('he-IL');
   sysRender();
