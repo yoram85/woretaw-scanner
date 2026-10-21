@@ -385,7 +385,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.13.0';
+var PWA_VERSION = '4.13.1';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -455,6 +455,8 @@ function post(path, body){
     .catch(function(e){ if (!(e && /^HTTP /.test(e.message))) setConn(false); throw e; });
 }
 function setConn(ok){
+  // n8n is reachable but refuses this phone's access code: keep saying so
+  if (ok && typeof relayError !== 'undefined' && relayError) { $('hdrDot').className = 'dot'; $('hdrStat').textContent = relayError; return; }
   $('hdrDot').className = 'dot' + (ok ? ' on' : '');
   $('hdrStat').textContent = ok ? 'מחובר' : 'מנותק';
 }
@@ -470,17 +472,42 @@ function busPoll(){
   busPolling = true;
   post('/woretaw-term-down', { token: token, device: cfg.device || 'מסופון' })
     .then(function(d){
+      if (d && d.success === false) { relayRefused(d.error); return; }
+      relayRefused('');
       if (d && d.success && Array.isArray(d.items)) {
         d.items.forEach(function(it){ busListeners.forEach(function(fn){ try { fn(it); } catch(e){} }); });
       }
     }).catch(function(){}).then(function(){ busPolling = false; });
 }
 setInterval(busPoll, 5000);
+// n8n answers a wrong access code with {success:false, error:'קוד גישה שגוי'}.
+// That used to look like success: the header said "מחובר" and every request
+// waited 40 seconds for "לא התקבלה תשובה". Now the reason shows at once.
+var relayError = '';
+function relayRefused(msg){
+  if (msg === relayError) return;
+  relayError = msg || '';
+  if (relayError) {
+    $('hdrDot').className = 'dot';
+    $('hdrStat').textContent = relayError;
+    toast(relayError + ' · הגדרות ← חיבור', 'err');
+  } else setConn(true);
+}
 function termUp(kind, text, to){
   var token = (cfg.termToken || '').trim();
-  if (!token) { toast('חסר קוד גישה — הזן בהגדרות ← חיבור', 'err'); return Promise.reject(new Error('no token')); }
-  return post('/woretaw-term-up', { token: token, device: cfg.device || 'מסופון', kind: kind, text: text, to: to || '', target: cfg.target || '' });
+  if (!token) { toast('חסר קוד גישה — הזן בהגדרות ← חיבור', 'err'); return Promise.reject(new Error('חסר קוד גישה')); }
+  return post('/woretaw-term-up', { token: token, device: cfg.device || 'מסופון', kind: kind, text: text, to: to || '', target: cfg.target || '' })
+    .then(function(d){
+      if (d && d.success === false) {
+        relayRefused(d.error || 'הבקשה נדחתה');
+        var e = new Error(d.error || 'הבקשה נדחתה'); e.refused = true; throw e;
+      }
+      relayRefused('');
+      return d;
+    });
 }
+// What to show when a request did not go out: the relay's own reason, or no connection
+function upErr(e){ return (e && e.refused) ? '❌ ' + e.message : '❌ אין חיבור ל-n8n'; }
 
 // ============ SCAN ============
 var scanHist = LS.get('wpwaScans', []);
@@ -1010,7 +1037,7 @@ function locSearch(q){
     locWaiter = { off: off };
     setTimeout(function(){ if (!done) { done = true; off(); locWaiter = null;
       $('locResult').innerHTML = '<div class="empty">❌ אין מענה מהשרת (60 שנ׳).<br>בדוק שהגשר פעיל בדאשבורד.</div>'; } }, 60000);
-  }).catch(function(){ $('locResult').innerHTML = '<div class="empty">❌ הבקשה לא נשלחה</div>'; });
+  }).catch(function(e){ $('locResult').innerHTML = '<div class="empty">' + esc(e && e.refused ? upErr(e) : '❌ הבקשה לא נשלחה') + '</div>'; });
 }
 function locPick(item){ var r = dftData.filter(function(x){ return x.item === item; })[0]; if (r) locShowLocal(r); }
 function locShowLocal(r){
@@ -1129,7 +1156,7 @@ function chatPull(){
   if (!token) { chatStatus('⚠ חסר קוד גישה — הזן בהגדרות ← חיבור, בלעדיו הצ׳אט לא מתעדכן', true); return; }
   termUp('command', 'chatpull ' + lastPullId)
     .then(function(){ chatStatus('מתעדכן…'); })
-    .catch(function(){ chatStatus('⚠ אין חיבור ל-n8n', true); });
+    .catch(function(e){ chatStatus(e && e.refused ? '⚠ ' + e.message + ' · הגדרות ← חיבור' : '⚠ אין חיבור ל-n8n', true); });
 }
 // Pull on EVERY tab — the badge and the sound must work while scanning too.
 setInterval(chatPull, 10000);
@@ -1390,7 +1417,7 @@ function chatFileHtml(f, msgId){
 }
 function chatFileGet(fileId){
   toast('⏳ מוריד…');
-  termUp('command', 'chatfile ' + fileId).catch(function(){ toast('❌ ההורדה נכשלה', 'err'); });
+  termUp('command', 'chatfile ' + fileId).catch(function(e){ toast(e && e.refused ? upErr(e) : '❌ ההורדה נכשלה', 'err'); });
 }
 
 function chatClear(){
@@ -1646,7 +1673,7 @@ function sysReload(){
     $('sysInfo').textContent = '❌ לא התקבלה תשובה. בדוק שהשרת עודכן (woretaw-systems.zip) והופעל מחדש, ושהגשר פועל.';
   }, 40000);
   termUp('command', cmd)
-    .catch(function(){ sysWaiting = ''; clearTimeout(sysTimer); $('sysInfo').textContent = '❌ אין חיבור ל-n8n'; });
+    .catch(function(e){ sysWaiting = ''; clearTimeout(sysTimer); $('sysInfo').textContent = upErr(e); });
 }
 
 // On a search screen the box is the query, not a local filter
@@ -1676,9 +1703,9 @@ function sysGetPhoto(id){
     sysPhotoWait = '';
     $('sysInfo').textContent = '❌ התמונה לא הגיעה. ודא שהשרת עודכן והופעל מחדש.';
   }, 40000);
-  termUp('command', 'empphoto ' + id).catch(function(){
+  termUp('command', 'empphoto ' + id).catch(function(e){
     sysPhotoWait = ''; clearTimeout(sysTimer);
-    $('sysInfo').textContent = '❌ אין חיבור';
+    $('sysInfo').textContent = upErr(e);
   });
 }
 
@@ -1741,7 +1768,7 @@ function lblFind(){
     sysWaiting = '';
     $('sysInfo').textContent = '❌ לא התקבלה תשובה מהשרת';
   }, 40000);
-  termUp('command', 'lblfind ' + code).catch(function(){ sysWaiting=''; $('sysInfo').textContent = '❌ אין חיבור'; });
+  termUp('command', 'lblfind ' + code).catch(function(e){ sysWaiting=''; clearTimeout(sysTimer); $('sysInfo').textContent = upErr(e); });
 }
 
 function lblPrint(){
@@ -1757,7 +1784,7 @@ function lblPrint(){
     sysWaiting = '';
     $('sysInfo').textContent = '❌ אין אישור מהמדפסת — בדוק מול השרת';
   }, 40000);
-  termUp('command', 'lblprint ' + JSON.stringify(job)).catch(function(){ sysWaiting=''; $('sysInfo').textContent = '❌ אין חיבור'; });
+  termUp('command', 'lblprint ' + JSON.stringify(job)).catch(function(e){ sysWaiting=''; clearTimeout(sysTimer); $('sysInfo').textContent = upErr(e); });
 }
 
 function sysOnType(){ if (!sysCur || !sysCur.search) sysRender(); }
