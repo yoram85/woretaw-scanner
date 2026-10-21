@@ -325,7 +325,7 @@
       <div class="group-title">📱 מכשיר</div>
       <label class="lbl">שם מכשיר</label>
       <input class="field" id="setDevice" placeholder="מסופון">
-      <p class="hint">השם שמופיע בדאשבורד המסופונים ובצ׳אט.</p>
+      <p class="hint">השם שמופיע בדאשבורד המסופונים ובצ׳אט. לכל טלפון צריך שם משלו: שני טלפונים עם אותו שם נראים בשרת כמכשיר אחד.</p>
     </div>
 
     <div class="group">
@@ -385,7 +385,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.12.0';
+var PWA_VERSION = '4.12.1';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -405,6 +405,11 @@ var cfg = Object.assign({}, DEFAULTS, LS.get('wpwaCfg', {}));
   }
 } catch(e){} })();
 function saveCfg(){ LS.set('wpwaCfg', cfg); }
+// The plant server tells phones apart only by this name. Two phones left on the
+// default "מסופון" became one chat participant and could not see each other, so a
+// phone without a name of its own gets a numbered one on first run.
+function uniqueDeviceName(){ return 'מסופון-' + String(Math.floor(1000 + Math.random() * 9000)); }
+if (!cfg.device || cfg.device === DEFAULTS.device) { cfg.device = uniqueDeviceName(); saveCfg(); }
 function n8n(){ return (cfg.n8nBase || DEFAULTS.n8nBase).replace(/\/+$/, ''); }
 
 var toastTimer;
@@ -1789,7 +1794,14 @@ function renderSettings(){
 function pickFeedback(v){ cfg.feedback = v; saveCfg(); renderSettings(); if (v === 'sound' || v === 'both') beep(); if ((v === 'vibrate' || v === 'both') && navigator.vibrate) navigator.vibrate(60); }
 function pickDelay(v){ cfg.scanDelay = v; saveCfg(); renderSettings(); }
 function pickCam(v){ cfg.camera = v; saveCfg(); renderSettings(); if (scanning) { stopCam(); setTimeout(startCam, 400); } }
-$('setDevice').addEventListener('change', function(e){ cfg.device = e.target.value.trim() || 'מסופון'; saveCfg(); toast('נשמר'); });
+$('setDevice').addEventListener('change', function(e){
+  var name = e.target.value.trim() || uniqueDeviceName();
+  // Best effort: the roster comes with the chat refresh, so a name another phone is
+  // using right now is caught; an offline phone with the same name is not.
+  var taken = name !== cfg.device && onlineUsers.some(function(u){ return u.name === name; });
+  if (taken) { e.target.value = cfg.device; toast('השם "' + name + '" כבר בשימוש בטלפון אחר. בחר שם אחר', 'err'); return; }
+  cfg.device = name; e.target.value = name; saveCfg(); toast('נשמר');
+});
 $('setN8n').addEventListener('change', function(e){ cfg.n8nBase = e.target.value.trim().replace(/\/+$/, '') || DEFAULTS.n8nBase; saveCfg(); toast('נשמר'); });
 $('setToken').addEventListener('change', function(e){ cfg.termToken = e.target.value.trim(); saveCfg(); toast('נשמר'); });
 
