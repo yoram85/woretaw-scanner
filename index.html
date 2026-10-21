@@ -385,7 +385,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.12.1';
+var PWA_VERSION = '4.13.0';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -446,8 +446,13 @@ function feedback(){
 // ============ n8n transport ============
 function post(path, body){
   return fetch(n8n() + path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
-    .then(function(r){ setConn(true); return r.json(); })
-    .catch(function(e){ setConn(false); throw e; });
+    .then(function(r){
+      setConn(true);
+      // An error page is not an acknowledgement: callers clear their lists on success
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .catch(function(e){ if (!(e && /^HTTP /.test(e.message))) setConn(false); throw e; });
 }
 function setConn(ok){
   $('hdrDot').className = 'dot' + (ok ? ' on' : '');
@@ -479,6 +484,7 @@ function termUp(kind, text, to){
 
 // ============ SCAN ============
 var scanHist = LS.get('wpwaScans', []);
+scanHist.forEach(function(h){ h.sending = false; });   // a reload interrupts any send in flight
 var scanner = null, scanning = false, torch = false;
 var lastCode = '', lastTime = 0, cooldownTimer = null;
 
@@ -500,10 +506,40 @@ function doScan(code){
   scanHist.unshift(entry); if (scanHist.length > 500) scanHist.pop();
   LS.set('wpwaScans', scanHist); renderHistory();
 
-  post('/scanner-scan', { barcode: code, device: cfg.device || 'מסופון', avatar: cfg.avatar || null, target: cfg.target || '' })
-    .then(function(d){ if (d && d.success) { entry.synced = true; LS.set('wpwaScans', scanHist); renderHistory(); } })
-    .catch(function(){ toast('❌ אין חיבור — הסריקה תישאר בהיסטוריה', 'err'); });
+  sendScan(entry, false).catch(function(){ toast('אין חיבור. הסריקה תישלח אוטומטית כשהחיבור יחזור', 'err'); });
 }
+function sendScan(entry, retry){
+  var body = { barcode: entry.code, device: cfg.device || 'מסופון', avatar: cfg.avatar || null, target: cfg.target || '' };
+  // A resent scan keeps the time it was really scanned
+  if (retry) body.timestamp = new Date(Number(entry.id)).toISOString();
+  entry.sending = true;
+  return post('/scanner-scan', body)
+    .then(function(d){
+      entry.sending = false;
+      if (!d || !d.success) throw new Error('not acknowledged');
+      entry.synced = true; LS.set('wpwaScans', scanHist); renderHistory();
+    }, function(e){ entry.sending = false; throw e; });
+}
+// Scans made without reception used to stay "⏳" forever. Resend them, oldest
+// first, one at a time, when the connection is back.
+var resendBusy = false;
+function resendPending(){
+  if (resendBusy || !navigator.onLine) return;
+  var cutoff = Date.now() - 12 * 60 * 60 * 1000;
+  var todo = scanHist.filter(function(h){
+    var at = Number(h.id);
+    return !h.synced && !h.sending && at > cutoff && Date.now() - at > 15000;
+  }).reverse().slice(0, 20);
+  if (!todo.length) return;
+  resendBusy = true;
+  var next = function(i){
+    if (i >= todo.length) { resendBusy = false; return; }
+    sendScan(todo[i], true).then(function(){ next(i + 1); }, function(){ resendBusy = false; });
+  };
+  next(0);
+}
+setInterval(resendPending, 30000);
+window.addEventListener('online', function(){ setTimeout(resendPending, 2000); });
 function showCooldown(sec){ var el = $('cooldown'); el.style.display=''; el.textContent = 'המתן ' + sec + ' שנ׳ לסריקה הבאה'; }
 function startCooldown(delayMs){
   showCooldown(Math.ceil(delayMs/1000));
@@ -809,6 +845,9 @@ function closeScanSheet(){
   scanning = false; camEngine = ''; detector = null;
   camVideoEl = null; camDeliver = null;
   $('scanSheet').classList.remove('on');
+  // openCamera() relabels the scan tab's button; put it back, or the סריקה tab
+  // keeps showing "עצור" although its camera is off.
+  $('btnScan').textContent = '📷 סרוק'; $('btnScan').classList.remove('active');
   camInfo('');
 }
 function sheetTorch(){
@@ -887,7 +926,8 @@ function dftFinish(){
   });
   if (!orders.length) { toast('אין הזמנות'); return; }
   post('/scanner-scan', { barcode: '__DFT_ORDERS__', device: cfg.device || 'מסופון', target: cfg.target || '', orders: orders, timestamp: new Date().toISOString() })
-    .then(function(){ toast('✅ ' + orders.length + ' הזמנות נשלחו!', 'ok'); feedback();
+    .then(function(d){ if (d && d.success === false) throw new Error('rejected');
+      toast(orders.length + ' הזמנות נשלחו', 'ok'); feedback();
       dftOrders = {}; LS.set('wpwaDftOrders', dftOrders); renderDft(); })
     .catch(function(){ toast('❌ שליחה נכשלה', 'err'); });
 }
@@ -960,7 +1000,10 @@ function locSearch(q){
     var off = busAdd(function(it){
       if (done || !it || it.kind === 'chat') return;
       var tx = String(it.text || '');
-      if (tx.indexOf('##') === 0 || tx.indexOf('מחוברים כרגע') === 0) return;
+      // Only the server's answer to "loc" (routes/chat-terminal.js). Any other
+      // reply that lands meanwhile ("✓ הקובץ נשלח", a systems-tab answer) used
+      // to be shown as the location.
+      if (!/^(מיקומים |לא נמצא מיקום|שימוש: loc|שגיאת DB)/.test(tx)) return;
       done = true; off(); locWaiter = null;
       locCard(item, '', tx, 'משרת המפעל');
     });
@@ -1006,7 +1049,8 @@ function recvClear(){ if (!recvList.length) return; if (!confirm('למחוק ה�
 function recvSubmit(){
   if (!recvList.length) { toast('הרשימה ריקה'); return; }
   post('/scanner-scan', { barcode: '__RECEIVE__', device: cfg.device || 'מסופון', target: cfg.target || '', receiveList: recvList, timestamp: new Date().toISOString() })
-    .then(function(){ toast('✅ ' + recvList.length + ' פריטים נשלחו!', 'ok'); feedback();
+    .then(function(d){ if (d && d.success === false) throw new Error('rejected');
+      toast(recvList.length + ' פריטים נשלחו', 'ok'); feedback();
       recvList = []; LS.set('wpwaRecv', recvList); renderRecv(); })
     .catch(function(){ toast('❌ שליחה נכשלה', 'err'); });
 }
@@ -1033,19 +1077,44 @@ var chatUnread = 0, lastPullId = 0, chatTarget = null;
 var onlineUsers = [], usersExpanded = false;
 
 function chatKey(m){ return String(m.id || (m.timestamp + '|' + m.text)); }
+// The same message reaches the phone twice: pushed live by the bridge (text only,
+// no sender id, no attachment) and again by chatpull (with from/to and the file).
+// Keeping only the first copy hid every incoming private message (the private view
+// filters on the sender id) and every attachment that arrived live, so the second
+// copy now fills in whatever the first one was missing.
+function chatMerge(x, m){
+  var changed = false;
+  ['from', 'to', 'file'].forEach(function(k){ if (m[k] && !x[k]) { x[k] = m[k]; changed = true; } });
+  if (m.isTerminal && !x.isTerminal) { x.isTerminal = true; changed = true; }
+  return changed;
+}
 function chatAdd(m, notify){
   if (!m || (!m.text && !m.file)) return;
-  if (chatMsgs.some(function(x){ return chatKey(x) === chatKey(m); })) return;
+  var dup = chatMsgs.filter(function(x){ return chatKey(x) === chatKey(m); })[0];
+  if (dup) { if (chatMerge(dup, m)) { LS.set('wpwaChat', chatMsgs); renderChat(); } return; }
+  // The bridge also hands every group message back to the phone that wrote it.
+  // That copy carries the server id; adopt it into the local copy instead of
+  // showing the message twice.
+  var me = cfg.device || 'מסופון';
+  if (!m.mine && String(m.fromName || '') === me) {
+    var own = chatMsgs.filter(function(x){
+      return x.mine && /^local-/.test(String(x.id)) && x.text === m.text &&
+        Math.abs(new Date(x.timestamp) - new Date(m.timestamp || Date.now())) < 10 * 60 * 1000;
+    })[0];
+    if (own) { own.id = m.id || own.id; chatMerge(own, m); LS.set('wpwaChat', chatMsgs); renderChat(); return; }
+  }
   chatMsgs.push({ id: m.id, from: m.from, to: m.to || null, fromName: m.fromName || 'משתמש', text: m.text,
                   priv: !!m.priv, isTerminal: !!m.isTerminal, mine: !!m.mine, file: m.file || null,
                   timestamp: m.timestamp || new Date().toISOString() });
   if (chatMsgs.length > 300) chatMsgs = chatMsgs.slice(-300);
   LS.set('wpwaChat', chatMsgs);
-  var mine = m.mine || String(m.fromName || '') === (cfg.device || 'מסופון');
+  var mine = m.mine || String(m.fromName || '') === me;
   if (notify && !mine) {
     beep();
     if (navigator.vibrate) navigator.vibrate(40);
     if (!$('scChat').classList.contains('on')) { chatUnread++; renderChatBadge(); }
+    // A private message is not shown in the group view, so say who it came from
+    if (m.priv) toast('הודעה פרטית מאת ' + (m.fromName || 'משתמש') + ' · צ׳אט ← בחר נמען');
   }
   renderChat();
 }
@@ -1073,8 +1142,9 @@ busAdd(function(it){
   if (!it || !it.text) return;
   var t = String(it.text);
   if (it.kind === 'chat') {
-    var isPriv = t.indexOf('[פרטי] ') === 0;
-    var raw = isPriv ? t.slice(8) : t;
+    var PRIV = '[פרטי] ';
+    var isPriv = t.indexOf(PRIV) === 0;
+    var raw = isPriv ? t.slice(PRIV.length) : t;   // was slice(8): ate the sender's first letter
     var sep = raw.indexOf(': ');
     chatAdd({ id: it.chatId || (it.ts + '|' + t), fromName: sep > 0 ? raw.slice(0, sep) : 'משתמש',
               text: sep > 0 ? raw.slice(sep + 2) : raw, priv: isPriv,
@@ -1190,7 +1260,8 @@ function renderChat(){
         (m.text ? '<div style="font-size:13px;line-height:1.5;color:#e9edef;white-space:pre-wrap">' + esc(m.text) + '</div>' : '') +
         (m.file ? chatFileHtml(m.file, m.id) : '') +
         '<div style="font-size:9px;color:#8696a0;margin-top:3px;text-align:left;direction:ltr">' +
-          (isNaN(t) ? '' : t.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' })) + '</div>' +
+          (isNaN(t) ? '' : t.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' })) +
+          (m.failed ? ' <span style="color:#f87171;direction:rtl">· לא נשלח</span>' : '') + '</div>' +
       '</div></div>';
   }).join('');
   if (stick) el.scrollTop = el.scrollHeight; else el.scrollTop = prevTop;
@@ -1417,11 +1488,19 @@ function chatSend(){
   var text = input.value.trim();
   if (!text) return;
   beep();
-  chatAdd({ id: 'local-' + Date.now(), fromName: cfg.device || 'מסופון', text: text, mine: true,
+  var localId = 'local-' + Date.now();
+  chatAdd({ id: localId, fromName: cfg.device || 'מסופון', text: text, mine: true,
             priv: !!chatTarget, to: chatTarget ? chatTarget.odbc : null }, false);
+  // The bubble appears at once; if the send fails it is marked, so it does not
+  // look delivered when it never left the phone.
+  var failed = function(){
+    toast('ההודעה לא נשלחה', 'err');
+    var m = chatMsgs.filter(function(x){ return x.id === localId; })[0];
+    if (m) { m.failed = true; LS.set('wpwaChat', chatMsgs); renderChat(); }
+  };
   termUp('chat', text, chatTarget ? chatTarget.odbc : '')
-    .then(function(d){ if (!d.success) toast('❌ ההודעה לא נשלחה', 'err'); })
-    .catch(function(){ toast('❌ ההודעה לא נשלחה', 'err'); });
+    .then(function(d){ if (!d || !d.success) failed(); })
+    .catch(failed);
   input.value = '';
 }
 $('chatInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') chatSend(); });
