@@ -285,7 +285,10 @@
     <button class="icon-btn" onclick="sysReload()" title="רענן">🔄</button>
     <input id="sysFilter" type="text" placeholder="סנן ברשימה…" autocomplete="off"
            oninput="sysOnType()" onkeydown="if(event.key==='Enter') sysReload()">
+    <button class="icon-btn" id="sysScanBtn" style="display:none" title="סרוק"
+            onclick="scanInto('sysFilter', 'sysCam', function(){ sysReload(); })">📷</button>
   </div>
+  <div id="sysCam"></div>
   <div id="sysInfo" style="padding:6px 12px;font-size:11px;color:#64748b"></div>
   <div id="sysList" style="padding:0 12px 12px"></div>
 </div>
@@ -385,7 +388,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.13.1';
+var PWA_VERSION = '4.14.0';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -1573,7 +1576,10 @@ var SYS_SCREENS = [
     facts: function(r){ return [['מחלקה', r.department], ['תפקיד', r.profession], ['אתר', r.site]]; },
     hay:   function(r){ return [r.id, r.name, r.department, r.profession].join(' '); } },
 
-  { key: 'lbl', label: '🖨️ מדבקות מיקום', path: '/lbl', form: true }
+  { key: 'lbl', label: '🖨️ מדבקות מיקום', path: '/lbl', form: true },
+
+  // Reception labels (2026-10-22): the same label the reception-labels page prints
+  { key: 'rcv', label: '🏷️ מדבקות קליטה', path: '/rcv', form: true }
 ];
 
 // The last answer of every screen is kept, so opening the tab shows what you
@@ -1624,9 +1630,17 @@ function sysOpen(key){
   if (!sc) return;
   sysCur = sc; sysAltOn = false; sysRows = [];
   $('sysList').innerHTML = '';
-  $('sysFilter').placeholder = sc.form ? 'מק״ט להדפסה…' : (sc.search ? 'שם או מספר עובד…' : 'סנן ברשימה…');
+  $('sysFilter').placeholder = sc.key === 'rcv' ? 'מספר לוט…' : (sc.form ? 'מק״ט להדפסה…' : (sc.search ? 'שם או מספר עובד…' : 'סנן ברשימה…'));
   if (sc.search || sc.form) $('sysFilter').value = '';
+  $('sysScanBtn').style.display = sc.form ? '' : 'none';
   renderSysPick();
+  if (sc.key === 'rcv') {
+    rcvLot = null; rcvQty = 1;
+    $('sysFilterRow').style.display = '';
+    $('sysInfo').textContent = 'הקלד או סרוק מספר לוט';
+    rcvRender();
+    return;
+  }
   if (sc.form) {
     lblItem = null; lblLoc = ''; lblQty = 1;
     $('sysFilterRow').style.display = '';
@@ -1648,6 +1662,7 @@ function sysToggleAlt(){
 
 function sysReload(){
   if (!sysCur) return;
+  if (sysCur.key === 'rcv') { rcvFind(); return; }
   if (sysCur.form) { lblFind(); return; }
   var token = (cfg.termToken || '').trim();
   if (!token) { $('sysInfo').textContent = '⚠ חסר קוד גישה — הזן בהגדרות ← חיבור'; return; }
@@ -1787,6 +1802,69 @@ function lblPrint(){
   termUp('command', 'lblprint ' + JSON.stringify(job)).catch(function(e){ sysWaiting=''; clearTimeout(sysTimer); $('sysInfo').textContent = upErr(e); });
 }
 
+// ===== מדבקות קליטה (2026-10-22) =====
+// Lot → the lot's details from BAAN → how many → print. The server reads the lot
+// again before printing, so the label is exactly what the reception page prints.
+var rcvLot = null, rcvQty = 1;
+var RCV_QTYS = [1, 2, 3, 5, 10, 20];
+
+function rcvRender(){
+  var box = $('sysList');
+  if (!rcvLot) { box.innerHTML = '<div class="sys-card"><div class="s">הקלד או סרוק מספר לוט ולחץ 🔄</div></div>'; return; }
+  var r = rcvLot;
+  var facts = [['לוט', r.lot], ['כמות במלאי', r.qty], ['Rev', r.rev], ['DC', r.dc2], ['אריזה', r.packType], ['', r.rohs], ['', r.msl]]
+    .filter(function(f){ return f[1] !== undefined && f[1] !== null && String(f[1]).trim() !== ''; });
+  box.innerHTML =
+    '<div class="sys-card">' +
+      '<div class="t">' + esc(r.item) + '</div>' +
+      '<div class="s">' + esc(r.description || '') + '</div>' +
+      '<div class="g">' + facts.map(function(f){
+        return '<div>' + (f[0] ? esc(f[0]) + ': ' : '') + '<b>' + esc(String(f[1])) + '</b></div>'; }).join('') + '</div>' +
+    '</div>' +
+    '<div class="sys-card">' +
+      '<div class="s" style="margin-bottom:6px">כמות מדבקות</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+        RCV_QTYS.map(function(n){
+          return '<span onclick="rcvSetQty(' + n + ')" style="cursor:pointer;padding:7px 13px;border-radius:9px;font-size:13px;font-weight:700;' +
+            (rcvQty === n ? 'background:#1d4ed8;color:#fff' : 'background:#0f172a;color:#cbd5e1;border:1px solid #334155') + '">' + n + '</span>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+    '<div onclick="rcvPrint()" style="background:#16a34a;color:#fff;text-align:center;padding:14px;border-radius:10px;' +
+      'font-weight:800;font-size:15px;cursor:pointer">🖨️ הדפס ' + rcvQty + ' מדבקות קליטה</div>';
+}
+function rcvSetQty(n){ rcvQty = n; rcvRender(); }
+
+function rcvFind(){
+  var lot = ($('sysFilter').value || '').trim();
+  if (lot.length < 2) { $('sysInfo').textContent = 'הקלד מספר לוט'; return; }
+  rcvLot = null; rcvRender();
+  sysWaiting = '/rcv';
+  $('sysInfo').textContent = '⏳ מחפש לוט…';
+  if (sysTimer) clearTimeout(sysTimer);
+  sysTimer = setTimeout(function(){
+    if (sysWaiting !== '/rcv') return;
+    sysWaiting = '';
+    $('sysInfo').textContent = '❌ לא התקבלה תשובה מהשרת';
+  }, 40000);
+  termUp('command', 'rcvfind ' + lot).catch(function(e){ sysWaiting = ''; clearTimeout(sysTimer); $('sysInfo').textContent = upErr(e); });
+}
+
+function rcvPrint(){
+  if (!rcvLot) return;
+  if (!confirm('להדפיס ' + rcvQty + ' מדבקות קליטה?\n' + rcvLot.item + ' · לוט ' + rcvLot.lot)) return;
+  sysWaiting = '/rcvprint';
+  $('sysInfo').textContent = '⏳ שולח למדפסת…';
+  if (sysTimer) clearTimeout(sysTimer);
+  sysTimer = setTimeout(function(){
+    if (sysWaiting !== '/rcvprint') return;
+    sysWaiting = '';
+    $('sysInfo').textContent = '❌ אין אישור מהמדפסת, בדוק מול השרת';
+  }, 40000);
+  termUp('command', 'rcvprint ' + JSON.stringify({ lot: rcvLot.lot, q: rcvQty }))
+    .catch(function(e){ sysWaiting = ''; clearTimeout(sysTimer); $('sysInfo').textContent = upErr(e); });
+}
+
 function sysOnType(){ if (!sysCur || !sysCur.search) sysRender(); }
 
 function sysRender(){
@@ -1847,6 +1925,15 @@ busAdd(function(it){
       lblItem = li; lblLoc = (li.locations && li.locations[0]) ? li.locations[0].location : '';
       $('sysInfo').textContent = 'נמצא — בחר מיקום וכמות';
       lblRender();
+    } catch (e) { $('sysInfo').textContent = '❌ תשובה לא תקינה'; }
+    return;
+  }
+  if (o.path === '/rcv') {
+    sysWaiting = ''; if (sysTimer) clearTimeout(sysTimer);
+    try {
+      rcvLot = JSON.parse(o.body);
+      $('sysInfo').textContent = 'נמצא, בחר כמות מדבקות';
+      rcvRender();
     } catch (e) { $('sysInfo').textContent = '❌ תשובה לא תקינה'; }
     return;
   }
