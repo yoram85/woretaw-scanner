@@ -388,7 +388,7 @@ window.onerror = function(msg, src, line){
   } catch(e){}
   return false;
 };
-var PWA_VERSION = '4.14.0';
+var PWA_VERSION = '4.15.0';
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function $(id){ return document.getElementById(id); }
 var LS = {
@@ -930,17 +930,69 @@ var dftOrders = LS.get('wpwaDftOrders', {});
 var dftSortKey = 'item', dftSortDir = 'asc';
 var DFT_SORTS = [['Item','item'],['Desc','description'],['MH','mh'],['S/S','surplusShortage'],['Loc','locations']];
 
+// 🔄 shows the last result at once, then asks the plant server to run DFT
+// demand again (the same run as the interface button, so the dashboards update
+// too) and swaps in the fresh rows when it is done. The run takes minutes and
+// a bridge command gets 30 seconds, so: dftrun starts it, dftget every 8s.
+var dftRun = null;   // { startedAt, timer, deadline } while a run is followed
 function dftLoad(){
   $('btnDftLoad').textContent = '⏳ טען';
   fetch(n8n() + '/scanner-pending').then(function(r){ setConn(true); return r.json(); }).then(function(d){
     if (d.dftDemand && d.dftDemand.data && d.dftDemand.data.length) {
       dftData = d.dftDemand.data; dftTs = d.dftDemand.timestamp || '';
       LS.set('wpwaDft', { data: dftData, ts: dftTs }); renderDft();
-    } else toast('אין נתוני DFT — הרץ סריקה מהדאשבורד');
+    } else if (!(cfg.termToken || '').trim()) toast('אין נתוני DFT — הרץ סריקה מהדאשבורד');
     if (d.servers || d.knownServers) { lastServers = d; renderServers(); }
   }).catch(function(){ setConn(false); toast('❌ לא ניתן לטעון', 'err'); })
-    .then(function(){ $('btnDftLoad').textContent = '🔄 טען'; });
+    .then(function(){ if (!dftRun) $('btnDftLoad').textContent = '🔄 טען'; });
+  dftRefreshOnServer();
 }
+function dftRefreshOnServer(){
+  if (dftRun || !(cfg.termToken || '').trim()) return;
+  dftRun = { startedAt: '', timer: null, deadline: Date.now() + 12 * 60 * 1000 };
+  $('btnDftLoad').textContent = '⏳ מרענן';
+  renderDft();
+  // No answer to dftrun at all: the bridge is down or the server predates it
+  dftRun.timer = setTimeout(function(){
+    if (dftRun && !dftRun.startedAt) dftRunEnd('❌ השרת לא ענה להרצת DFT. בדוק שהשרת עודכן ושהגשר פועל');
+  }, 60000);
+  termUp('command', 'dftrun').catch(function(e){ dftRunEnd(upErr(e)); });
+}
+function dftRunEnd(msg){
+  if (!dftRun) return;
+  clearTimeout(dftRun.timer);
+  dftRun = null;
+  $('btnDftLoad').textContent = '🔄 טען';
+  if (msg) toast(msg, 'err');
+  renderDft();
+}
+function dftPollSoon(){
+  if (!dftRun) return;
+  clearTimeout(dftRun.timer);
+  if (Date.now() > dftRun.deadline) { dftRunEnd('❌ הרצת ה-DFT בשרת לא הסתיימה תוך 12 דקות'); return; }
+  dftRun.timer = setTimeout(function(){
+    termUp('command', 'dftget').catch(function(e){ dftRunEnd(upErr(e)); });
+  }, 8000);
+}
+busAdd(function(it){
+  if (!dftRun || !it || !it.text) return;
+  var raw = String(it.text), o, b;
+  if (raw.indexOf('##API##') !== 0) {
+    // the server cannot run it here (an older server, or an error)
+    if (/dft/i.test(raw) && it.kind !== 'chat')
+      dftRunEnd(/לא מוכרת/.test(raw) ? 'השרת במפעל עוד לא עודכן לרענון DFT מהטלפון. מוצגים הנתונים האחרונים מהממשק' : raw.slice(0, 200));
+    return;
+  }
+  try { o = JSON.parse(raw.slice(7)); b = JSON.parse(o.body); } catch (e) { return; }
+  if (o.path === '/dftrun') { dftRun.startedAt = b.startedAt || ''; dftPollSoon(); return; }
+  if (o.path !== '/dftdemand') return;
+  if (b.running) { dftPollSoon(); return; }
+  if (b.lastError && (!b.timestamp || b.timestamp < dftRun.startedAt)) { dftRunEnd('❌ הרצת DFT נכשלה: ' + b.lastError); return; }
+  dftData = b.data || []; dftTs = b.timestamp || '';
+  LS.set('wpwaDft', { data: dftData, ts: dftTs });
+  dftRunEnd('');
+  toast('DFT עודכן · ' + dftData.length + ' פריטים', 'ok');
+});
 function dftTapItem(item){
   dftOrders[item] = (dftOrders[item] || 0) + 1;
   LS.set('wpwaDftOrders', dftOrders);
@@ -971,7 +1023,8 @@ function dftSort(k){
   renderDft();
 }
 function renderDft(){
-  $('dftTs').textContent = dftTs ? new Date(dftTs).toLocaleString('he-IL') : '';
+  $('dftTs').textContent = dftRun ? 'מריץ DFT בשרת, זה לוקח עד כמה דקות…'
+    : (dftTs ? new Date(dftTs).toLocaleString('he-IL') : '');
   $('dftSorts').innerHTML = DFT_SORTS.map(function(p){
     return '<button class="sort-btn ' + (dftSortKey === p[1] ? 'on' : '') + '" onclick="dftSort(\'' + p[1] + '\')">' +
       p[0] + (dftSortKey === p[1] ? (dftSortDir === 'asc' ? ' ▲' : ' ▼') : '') + '</button>';
@@ -1918,6 +1971,7 @@ busAdd(function(it){
   }
   var o;
   try { o = JSON.parse(raw.slice(7)); } catch (e) { return; }
+  if (o.path === '/dftrun' || o.path === '/dftdemand') return;   // the DFT tab's
   if (o.path === '/lbl') {
     sysWaiting = ''; if (sysTimer) clearTimeout(sysTimer);
     try {
